@@ -5,62 +5,42 @@ on:
     branches:
       - main
   pull_request:
+    branches:
+      - main
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python 3.10
       uses: actions/setup-python@v4
       with:
-        python-version: 3.10
+        python-version: "3.10"
 
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y \
-          python3-pip \
-          python3-setuptools \
-          python3-wheel \
-          build-essential \
-          libffi-dev \
-          libssl-dev \
-          libsqlite3-dev \
-          zlib1g-dev \
-          openjdk-17-jdk \
-          unzip \
-          git \
-          zip \
-          libncurses5 \
-          libncurses5-dev \
-          libtinfo5
+        sudo apt install -y python3-pip python3-setuptools python3-wheel \
+          build-essential git zip unzip openjdk-17-jdk
 
-        python3 -m pip install --upgrade pip
-        pip install --user --upgrade Cython virtualenv
+        pip install --upgrade pip
+        pip install buildozer cython
 
-        pip install --user buildozer
-
-    - name: Set environment variables for Buildozer
+    - name: Install Android SDK & NDK requirements
       run: |
-        echo "PATH=$HOME/.local/bin:$PATH" >> $GITHUB_ENV
-        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+        buildozer android clean
+        buildozer android update
 
-    - name: Debug java and env
-      run: |
-        java -version
-        echo $JAVA_HOME
-        echo $PATH
-
-    - name: Build APK with Buildozer
+    - name: Build APK
       run: |
         buildozer android debug
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
-        name: MyApp-APK
+        name: app-debug.apk
         path: bin/*.apk
