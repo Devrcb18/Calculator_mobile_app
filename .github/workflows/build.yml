@@ -6,128 +6,87 @@ on:
 jobs:
   build-android:
     name: Build for Android
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Verify repository contents
-        run: |
-          echo "Repository contents:"
-          ls -la
-          [ -f main.py ] || touch main.py  # Ensure at least one Python file exists
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          python3-pip \
+          git \
+          zip \
+          unzip \
+          openjdk-17-jdk \
+          libncurses6 \
+          zlib1g-dev \
+          libffi-dev \
+          libssl-dev
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            python3-pip \
-            git \
-            zip \
-            unzip \
-            openjdk-17-jdk \
-            libncurses6 \
-            zlib1g-dev \
-            libffi-dev \
-            libssl-dev
+    - name: Install Buildozer
+      run: |
+        python -m pip install --upgrade pip
+        pip install cython==0.29.36 buildozer
 
-      - name: Create default requirements
-        run: |
-          if [ ! -f requirements.txt ]; then
-            echo "kivy>=2.3.0" > requirements.txt
-            echo "buildozer>=1.5.0" >> requirements.txt
-          fi
-          cat requirements.txt
+    - name: Build APK with debug
+      run: |
+        # Initialize if no spec file exists
+        if [ ! -f buildozer.spec ]; then
+          buildozer init
+          sed -i "s/^#requirements = .*/requirements = kivy/" buildozer.spec
+        fi
+        
+        # Clean previous builds
+        buildozer android clean
+        
+        # Build with full debug output
+        buildozer -v android debug 2>&1 | tee build.log
+        
+        # Verify build success
+        if grep -q "Build failed" build.log; then
+          echo "Build failed! Last errors:"
+          tail -n 50 build.log | grep -i error
+          exit 1
+        fi
 
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install cython==0.29.36 buildozer
+    - name: Find and prepare APK
+      run: |
+        # Create bin directory if it doesn't exist
+        mkdir -p bin
+        
+        # Search for APK in common locations
+        APK_PATH=$(find . -name "*.apk" | head -1)
+        
+        if [ -z "$APK_PATH" ]; then
+          echo "APK not found! Searching all directories:"
+          find . -type f -name "*.apk"
+          echo "Build log contents:"
+          cat build.log
+          exit 1
+        fi
+        
+        echo "Found APK at: $APK_PATH"
+        cp "$APK_PATH" bin/
+        echo "APK copied to bin directory"
+        ls -la bin/
 
-      - name: Initialize Buildozer
-        run: |
-          if [ ! -f buildozer.spec ]; then
-            buildozer init
-            sed -i "s/^#title = .*/title = MyApp/" buildozer.spec
-            sed -i "s/^#package.name = .*/package.name = myapp/" buildozer.spec
-            sed -i "s/^#package.domain = .*/package.domain = org.test/" buildozer.spec
-            sed -i "s/^#source.dir = .*/source.dir = ./" buildozer.spec
-            sed -i "s/^#source.include_exts = .*/source.include_exts = py,png,jpg,kv,atlas/" buildozer.spec
-            sed -i "s/^#version.regex = .*/version.regex = __version__ = '(.*)'/" buildozer.spec
-            sed -i "s/^#requirements = .*/requirements = $(grep -v '^#' requirements.txt | tr '\n' ',' | sed 's/,$//')/" buildozer.spec
-          fi
-          cat buildozer.spec
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: kivy-app
+        path: bin/*.apk
 
-      - name: Setup Android SDK
-        run: |
-          mkdir -p ~/android-sdk
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-          unzip -q cmdline-tools.zip -d ~/android-sdk/cmdline-tools
-          mv ~/android-sdk/cmdline-tools/cmdline-tools ~/android-sdk/cmdline-tools/latest
-
-          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=$HOME/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
-          echo "PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
-
-          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --install \
-            "platform-tools" \
-            "platforms;android-34" \
-            "build-tools;34.0.0" \
-            "ndk;25.2.9519653"
-
-          echo "PATH=$HOME/android-sdk/platform-tools:$HOME/android-sdk/build-tools/34.0.0:$PATH" >> $GITHUB_ENV
-
-      - name: Configure Buildozer paths
-        run: |
-          mkdir -p ~/.buildozer/android/platform
-          ln -sfn $HOME/android-sdk ~/.buildozer/android/platform/android-sdk
-          ln -sfn $HOME/android-sdk/ndk/25.2.9519653 ~/.buildozer/android/platform/android-ndk-r25b
-
-          echo "Buildozer paths:"
-          ls -la ~/.buildozer/android/platform/
-
-      - name: Build APK
-        run: |
-          echo "=== Build Environment ==="
-          echo "Python: $(which python)"
-          echo "Buildozer: $(which buildozer)"
-          echo "Android SDK: $ANDROID_SDK_ROOT"
-          echo "Android NDK: $ANDROID_NDK_ROOT"
-          echo "PATH: $PATH"
-          
-          echo "=== Starting Build ==="
-          buildozer -v android debug 2>&1 | tee build.log
-          BUILD_STATUS=$?
-          
-          echo "=== Build Artifacts ==="
-          ls -la bin/ || echo "No bin directory found"
-          
-          if [ $BUILD_STATUS -ne 0 ]; then
-            echo "=== BUILD FAILED ==="
-            tail -n 100 build.log
-            exit 1
-          fi
-
-      - name: Upload APK artifact
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: kivy-apk
-          path: bin/*.apk
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
+    - name: Upload build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: build.log
