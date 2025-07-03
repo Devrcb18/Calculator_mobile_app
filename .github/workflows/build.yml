@@ -1,53 +1,42 @@
-name: Build Kivy APK
-
+name: CI
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
 
 jobs:
-  build-apk:
-    runs-on: ubuntu-22.04 
+  build:
+    runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - uses: actions/checkout@v2
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      # used to cache dependencies with a timeout
+      - name: Get Date
+        id: get-date
+        run: |
+          echo "::set-output name=date::$(/bin/date -u "+%Y%m%d")"
+        shell: bash
 
-    - name: Install system dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y \
-          build-essential \
-          git \
-          zip \
-          unzip \
-          openjdk-17-jdk \
-          python3-pip \
-          libffi-dev \
-          libssl-dev \
-          libncurses5 \
-          libsqlite3-dev \
-          zlib1g-dev \
-          libbz2-dev \
-          libreadline-dev \
-          liblzma-dev
+      - name: Cache Buildozer global directory
+        uses: actions/cache@v2
+        with:
+          path: .buildozer_global
+          key: buildozer-global-${{ hashFiles('buildozer.spec') }} # Replace with your path
 
-    - name: Install Buildozer and Cython
-      run: |
-        pip install --upgrade pip
-        pip install buildozer cython
+      - uses: actions/cache@v2
+        with:
+          path: .buildozer
+          key: ${{ runner.os }}-${{ steps.get-date.outputs.date }}-${{ hashFiles('buildozer.spec') }}
 
-    - name: Build APK with Buildozer
-      run: |
-        buildozer android debug
+      - name: Build with Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
+        with:
+          command: buildozer android debug
+          buildozer_version: master
 
-    - name: Upload APK artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: kivy-app-apk
-        path: bin/*.apk
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: package
+          path: ${{ steps.buildozer.outputs.filename }}
