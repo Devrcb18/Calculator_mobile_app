@@ -9,84 +9,111 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          python3-pip \
-          git \
-          zip \
-          unzip \
-          openjdk-17-jdk \
-          libncurses6 \
-          zlib1g-dev \
-          libffi-dev \
-          libssl-dev
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip \
+            git \
+            zip \
+            unzip \
+            openjdk-17-jdk \
+            libncurses6 \
+            zlib1g-dev \
+            libffi-dev \
+            libssl-dev \
+            libxml2-dev \
+            libxslt1-dev
 
-    - name: Install Buildozer
-      run: |
-        python -m pip install --upgrade pip
-        pip install cython==0.29.36 buildozer
+      - name: Install Buildozer and dependencies
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install cython==0.29.36
+          pip install buildozer
+          pip install python-for-android
 
-    - name: Build APK with debug
-      run: |
-        # Initialize if no spec file exists
-        if [ ! -f buildozer.spec ]; then
-          buildozer init
-          sed -i "s/^#requirements = .*/requirements = kivy/" buildozer.spec
-        fi
-        
-        # Clean previous builds
-        buildozer android clean
-        
-        # Build with full debug output
-        buildozer -v android debug 2>&1 | tee build.log
-        
-        # Verify build success
-        if grep -q "Build failed" build.log; then
-          echo "Build failed! Last errors:"
-          tail -n 50 build.log | grep -i error
-          exit 1
-        fi
+      - name: Initialize Buildozer environment
+        run: |
+          # Create required directories
+          mkdir -p ~/.buildozer/android/platform
+          
+          # Initialize if no spec file exists
+          if [ ! -f buildozer.spec ]; then
+            buildozer init
+            sed -i "s/^#requirements = .*/requirements = python3,kivy/" buildozer.spec
+            sed -i "s/^#android.ndk_path = .*/android.ndk_path = \/home\/runner\/android-sdk\/ndk\/25.2.9519653/" buildozer.spec
+          fi
 
-    - name: Find and prepare APK
-      run: |
-        # Create bin directory if it doesn't exist
-        mkdir -p bin
-        
-        # Search for APK in common locations
-        APK_PATH=$(find . -name "*.apk" | head -1)
-        
-        if [ -z "$APK_PATH" ]; then
-          echo "APK not found! Searching all directories:"
-          find . -type f -name "*.apk"
-          echo "Build log contents:"
-          cat build.log
-          exit 1
-        fi
-        
-        echo "Found APK at: $APK_PATH"
-        cp "$APK_PATH" bin/
-        echo "APK copied to bin directory"
-        ls -la bin/
+      - name: Setup Android SDK and NDK
+        run: |
+          mkdir -p ~/android-sdk
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip -d ~/android-sdk/cmdline-tools
+          mv ~/android-sdk/cmdline-tools/cmdline-tools ~/android-sdk/cmdline-tools/latest
 
-    - name: Upload APK artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: kivy-app
-        path: bin/*.apk
+          echo "ANDROID_SDK_ROOT=~/android-sdk" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=~/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
+          echo "PATH=~/android-sdk/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
 
-    - name: Upload build log
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-log
-        path: build.log
+          yes | ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "ndk;25.2.9519653" \
+            "cmake;3.22.1"
+
+          echo "PATH=~/android-sdk/platform-tools:~/android-sdk/build-tools/34.0.0:$PATH" >> $GITHUB_ENV
+
+      - name: Build APK
+        run: |
+          # Clean previous builds
+          buildozer android clean || true
+          
+          # Build with verbose output
+          buildozer -v android debug 2>&1 | tee build.log
+          
+          # Check build result
+          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            echo "=== BUILD FAILED ==="
+            grep -i error build.log || echo "No error messages found"
+            exit 1
+          fi
+
+      - name: Find and upload APK
+        if: success()
+        run: |
+          # Search for APK in common locations
+          APK_PATH=$(find . -name "*.apk" | head -1)
+          
+          if [ -z "$APK_PATH" ]; then
+            echo "APK not found! Searching all directories:"
+            find . -type f -name "*.apk"
+            exit 1
+          fi
+          
+          echo "Found APK at: $APK_PATH"
+          mkdir -p bin
+          cp "$APK_PATH" bin/
+          echo "APK copied to bin directory"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kivy-app
+          path: bin/*.apk
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
