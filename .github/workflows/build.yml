@@ -79,12 +79,13 @@ jobs:
             buildozer init
           fi
           
-          # Update critical settings
-          sed -i "s/^#android.accept_sdk_license = .*/android.accept_sdk_license = True/" buildozer.spec
-          sed -i "s/^#android.ndk_path = .*/android.ndk_path = $HOME\/android-sdk\/ndk\/25.2.9519653/" buildozer.spec
-          sed -i "s/^#android.sdk_path = .*/android.sdk_path = $HOME\/android-sdk/" buildozer.spec
-          sed -i "s/^#android.sdk_manager_path = .*/android.sdk_manager_path = $HOME\/android-sdk\/cmdline-tools\/latest\/bin\/sdkmanager/" buildozer.spec
-          sed -i "s/^#p4a.branch = .*/p4a.branch = develop/" buildozer.spec
+          # Update critical settings using alternative sed delimiter
+          sed -i "s|^#android.accept_sdk_license = .*|android.accept_sdk_license = True|" buildozer.spec
+          sed -i "s|^#android.ndk_path = .*|android.ndk_path = $HOME/android-sdk/ndk/25.2.9519653|" buildozer.spec
+          sed -i "s|^#android.sdk_path = .*|android.sdk_path = $HOME/android-sdk|" buildozer.spec
+          sed -i "s|^#android.sdk_manager_path = .*|android.sdk_manager_path = $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager|" buildozer.spec
+          sed -i "s|^#p4a.branch = .*|p4a.branch = develop|" buildozer.spec
+          sed -i "s|^#requirements = .*|requirements = python3,kivy|" buildozer.spec
 
       - name: Build APK
         run: |
