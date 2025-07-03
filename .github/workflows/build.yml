@@ -46,13 +46,17 @@ jobs:
         export ANDROID_HOME=${HOME}/android-sdk
         export PATH=${ANDROID_HOME}/cmdline-tools/latest/bin:${PATH}
 
-        yes | sdkmanager --licenses
+        # Accept all licenses first
+        yes | sdkmanager --licenses || true
         sdkmanager --update
+        
+        # Install specific versions that work with Kivy
         sdkmanager "platform-tools" "platforms;android-33" "build-tools;34.0.0" "ndk;25.2.9519653"
         sdkmanager "cmdline-tools;latest"
 
-        # Verify AIDL is available
-        ls -la ${ANDROID_HOME}/build-tools/34.0.0/aidl || echo "AIDL not found!"
+        # Verify installation
+        ls -la ${ANDROID_HOME}/build-tools/34.0.0/
+        ${ANDROID_HOME}/build-tools/34.0.0/aidl --version
 
     - name: Build APK with Buildozer
       run: |
@@ -60,10 +64,9 @@ jobs:
         export ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/25.2.9519653
         export PATH=${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools:${ANDROID_SDK_ROOT}/build-tools/34.0.0:${PATH}
 
-        # Verify tools are in PATH
-        which aidl
-        which aapt
-        which zipalign
+        # Create symlink for buildozer's expected path
+        mkdir -p ~/.buildozer/android/platform/android-sdk
+        ln -s ${ANDROID_SDK_ROOT}/build-tools ~/.buildozer/android/platform/android-sdk/build-tools || true
 
         buildozer -v android debug
 
