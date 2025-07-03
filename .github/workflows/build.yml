@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout source code
@@ -25,13 +25,6 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-
-      - name: Prepare virtual environment
-        run: |
-          python3 -m venv venv
-          source venv/bin/activate
-          echo "Using Python==$(python --version)"
-        shell: bash
 
       - name: Install system dependencies
         run: |
@@ -53,9 +46,16 @@ jobs:
             libssl-dev
         shell: bash
 
+      - name: Prepare virtual environment
+        run: |
+          python3 -m venv venv
+          source venv/bin/activate
+          echo "Using Python==$(python --version)"
+        shell: bash
+
       - name: Install Python dependencies
         run: |
-          export PATH=$PATH:~/.local/bin/
+          source venv/bin/activate
           python3 -m pip install --upgrade pip
           python3 -m pip install --upgrade \
             Cython==0.29.33 \
@@ -64,14 +64,19 @@ jobs:
 
       - name: Install requirements.txt if exists
         run: |
+          source venv/bin/activate
           if [ -f requirements.txt ]; then
             python3 -m pip install -r requirements.txt
           fi
         shell: bash
 
-      - name: Export ANDROID_HOME for Buildozer
+      - name: Export ANDROID_HOME and related environment variables
         run: |
           echo "ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
+          echo "ANDROIDSDK=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
+          echo "ANDROIDNDK=$HOME/.buildozer/android/platform/android-ndk-r25b" >> $GITHUB_ENV
+          echo "ANDROIDAPI=31" >> $GITHUB_ENV
+          echo "ANDROIDMINAPI=21" >> $GITHUB_ENV
 
       # First run to initialize Buildozer and download SDK/NDK (may fail, that's OK)
       - name: Initialize Buildozer (SDK/NDK install)
@@ -102,15 +107,15 @@ jobs:
           set -e
         shell: bash
 
-      # Install Android SDK platform-tools, platforms, and build-tools
-      - name: Install Android SDK tools
+      # Install Android SDK tools for API 31 and build-tools 30.0.3
+      - name: Install Android SDK platform-tools, platforms, and build-tools
         run: |
           set +e
           for i in {1..5}; do
             "$SDKMANAGER_PATH" --sdk_root="$ANDROID_HOME" --verbose \
               "platform-tools" \
-              "platforms;android-33" \
-              "build-tools;33.0.0" && break || sleep 5
+              "platforms;android-31" \
+              "build-tools;30.0.3" && break || sleep 5
           done
           set -e
         shell: bash
