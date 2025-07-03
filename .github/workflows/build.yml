@@ -64,13 +64,14 @@ jobs:
           fi
         shell: bash
 
-      # First run to initialize Buildozer and download SDK/NDK
+      # First run to initialize Buildozer and download SDK/NDK (will fail, that's OK)
       - name: Initialize Buildozer (SDK/NDK install)
         run: |
           source venv/bin/activate
           buildozer android debug || true
         shell: bash
 
+      # Find sdkmanager path dynamically
       - name: Find sdkmanager path
         id: find_sdkmanager
         run: |
@@ -82,20 +83,19 @@ jobs:
           echo "SDKMANAGER_PATH=$SDKMANAGER_PATH" >> $GITHUB_ENV
           echo "Found sdkmanager at $SDKMANAGER_PATH"
 
-      - name: Accept Android SDK licenses (with retry)
+      # Accept Android SDK licenses
+      - name: Accept Android SDK licenses
         run: |
-          for i in {1..3}; do
-            yes | "$SDKMANAGER_PATH" --licenses --verbose && break || sleep 5
-          done
+          yes | "$SDKMANAGER_PATH" --licenses
         shell: bash
 
-      - name: Install Android Build Tools 36 (with retry)
+      # Install Android Build Tools 36
+      - name: Install Android Build Tools 36
         run: |
-          for i in {1..3}; do
-            "$SDKMANAGER_PATH" --verbose "build-tools;36.0.0" && break || sleep 5
-          done
+          "$SDKMANAGER_PATH" "build-tools;36.0.0"
         shell: bash
 
+      # Build your APK
       - name: Build with Buildozer
         run: |
           source venv/bin/activate
