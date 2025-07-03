@@ -30,7 +30,12 @@ jobs:
             zlib1g-dev \
             libffi-dev \
             libssl-dev \
-            libsqlite3-dev
+            libsqlite3-dev \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
+            cmake
 
       - name: Install Buildozer and dependencies
         run: |
@@ -55,6 +60,7 @@ jobs:
           echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
           echo "PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$PATH" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=$HOME/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$HOME/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
 
           # Accept licenses
           mkdir -p ~/android-sdk/licenses
@@ -89,7 +95,10 @@ jobs:
           sed -i "s|^#android.sdk_path = .*|android.sdk_path = $HOME/android-sdk|" buildozer.spec
           sed -i "s|^#android.sdk_manager_path = .*|android.sdk_manager_path = $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager|" buildozer.spec
           sed -i "s|^#p4a.branch = .*|p4a.branch = develop|" buildozer.spec
-          sed -i "s|^#requirements = .*|requirements = python3,kivy|" buildozer.spec
+          sed -i "s|^#requirements = .*|requirements = python3,kivy,pillow,hostpython3|" buildozer.spec
+          sed -i "s|^#android.api = .*|android.api = 33|" buildozer.spec
+          sed -i "s|^#android.minapi = .*|android.minapi = 21|" buildozer.spec
+          sed -i "s|^#android.ndk_version = .*|android.ndk_version = 25.2.9519653|" buildozer.spec
 
       - name: Build APK
         run: |
