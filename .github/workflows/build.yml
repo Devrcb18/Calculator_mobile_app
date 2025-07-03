@@ -1,20 +1,66 @@
+name: Build Android APK
+
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+  pull_request:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build APK
-        uses: digreatbrian/buildozer-action@v2
-        with:
-          python-version: 3.11
-          buildozer-cmd: buildozer -v android debug
+    runs-on: ubuntu-latest
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: package
-          path: ./bin/*.apk
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.10
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y \
+          python3-pip \
+          python3-setuptools \
+          python3-wheel \
+          build-essential \
+          libffi-dev \
+          libssl-dev \
+          libsqlite3-dev \
+          zlib1g-dev \
+          openjdk-17-jdk \
+          unzip \
+          git \
+          zip \
+          libncurses5 \
+          libncurses5-dev \
+          libtinfo5
+
+        python3 -m pip install --upgrade pip
+        pip install --user --upgrade Cython virtualenv
+
+        pip install --user buildozer
+
+    - name: Set environment variables for Buildozer
+      run: |
+        echo "PATH=$HOME/.local/bin:$PATH" >> $GITHUB_ENV
+        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+
+    - name: Debug java and env
+      run: |
+        java -version
+        echo $JAVA_HOME
+        echo $PATH
+
+    - name: Build APK with Buildozer
+      run: |
+        buildozer android debug
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: MyApp-APK
+        path: bin/*.apk
