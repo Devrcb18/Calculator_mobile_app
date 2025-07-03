@@ -47,6 +47,10 @@ jobs:
           unzip -q cmdline-tools.zip -d ~/android-sdk/cmdline-tools
           mv ~/android-sdk/cmdline-tools/cmdline-tools ~/android-sdk/cmdline-tools/latest
 
+          # Create legacy tools directory that Buildozer expects
+          mkdir -p ~/android-sdk/tools/bin
+          ln -s ~/android-sdk/cmdline-tools/latest/bin/sdkmanager ~/android-sdk/tools/bin/sdkmanager
+
           # Set environment variables
           echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
           echo "PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$PATH" >> $GITHUB_ENV
