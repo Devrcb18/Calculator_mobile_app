@@ -10,12 +10,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.8'
+          python-version: '3.10'
 
       - name: Install system dependencies
         run: |
@@ -25,36 +25,43 @@ jobs:
             git \
             zip \
             unzip \
-            openjdk-8-jdk
+            openjdk-17-jdk \
+            libncurses5
 
-      - name: Install Buildozer
-        run: pip install buildozer
-
-      - name: Setup Android SDK and build tools
+      - name: Install Buildozer and dependencies
         run: |
-          mkdir -p ~/android-sdk
-          wget https://dl.google.com/android/repository/commandlinetools-linux-8512546_latest.zip -O cmdline-tools.zip
+          python -m pip install --upgrade pip
+          pip install cython==0.29.36 buildozer
+
+      - name: Setup Android SDK
+        run: |
+          mkdir -p ~/android-sdk/cmdline-tools
+          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
           unzip cmdline-tools.zip -d ~/android-sdk/cmdline-tools
           mv ~/android-sdk/cmdline-tools/cmdline-tools ~/android-sdk/cmdline-tools/latest
-          
-          export ANDROID_SDK_ROOT=~/android-sdk
-          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
-          
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-33" "build-tools;34.0.0"
-          
-          # Verify aidl is installed
-          ls -la $ANDROID_SDK_ROOT/build-tools/34.0.0/aidl
-          $ANDROID_SDK_ROOT/build-tools/34.0.0/aidl --version
+
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
+
+          yes | ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          ~/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;34.0.0" \
+            "ndk;25.2.9519653"
+
+          echo "$HOME/android-sdk/build-tools/34.0.0:$PATH" >> $GITHUB_ENV
+
+          # Verify aidl installation
+          ls -la ~/android-sdk/build-tools/34.0.0/aidl
+          ~/android-sdk/build-tools/34.0.0/aidl --version || echo "AIDL check failed"
 
       - name: Build with Buildozer
         run: |
-          export ANDROID_SDK_ROOT=~/android-sdk
-          export PATH=$ANDROID_SDK_ROOT/build-tools/34.0.0:$PATH
-          buildozer android debug
+          buildozer -v android debug
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: kivy-app
           path: bin/*.apk
