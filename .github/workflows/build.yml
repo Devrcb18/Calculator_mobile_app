@@ -84,7 +84,7 @@ jobs:
           ln -sfn ~/android-sdk ~/.buildozer/android/platform/android-sdk
           
           if [ ! -f buildozer.spec ]; then
-            cat > buildozer.spec <<EOL
+            cat > buildozer.spec <<'EOL'
 [app]
 title = My Kivy App
 package.name = myapp
