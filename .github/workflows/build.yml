@@ -1,141 +1,80 @@
-name: Kivy App to APK
+name: 'Kivy App to APK'
+description: 'Convert Kivy app to APK'
+inputs:
+  python-version:
+    description: 'Python version to use'
+    default: '3.8'
+  work-dir:
+    default: '.'
+    description: 'Working directory'
+  buildozer-cmd:
+    default: 'buildozer android debug'
+    description: 'Buildozer command to use'
 
-on:
-  push:
-    branches:
-      - '*'
-  workflow_dispatch:
+# Add the branding section
+branding:
+  color: 'green'
+  icon: 'play'
 
-jobs:
-  build-apk:
-    runs-on: ubuntu-22.04
+runs:
+  using: "composite"
+  steps:
+    - name: Setup python
+      uses: actions/setup-python@v5
+      with:
+        architecture: x64
+        python-version: ${{ inputs.python-version }}
 
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@v4
+    - name: Setup Java 17 required by Gradle
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'  # or 'zulu','liberica', etc.
+        java-version: '17'
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.8'
-          architecture: x64
+    - name: Set JAVA_HOME
+      run: |
+        echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
+      shell: bash
 
-      - name: Setup Java 17 required by Gradle
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+    - name: Prepare virtual environment
+      run: |
+        python3 -m venv venv
+        source venv/bin/activate
+        echo "Using Python==$(python --version)"
+      shell: bash
+      
+    - name: Install and upgrade dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y git \
+          zip \
+          unzip \
+          openjdk-17-jdk \
+          python3-pip \
+          autoconf \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          libtinfo5 \
+          cmake \
+          libffi-dev \
+          libssl-dev
+        export PATH=$PATH:~/.local/bin/
+        python3 -m pip install --upgrade \
+          Cython==0.29.33 \
+          buildozer
+      shell: bash
 
-      - name: Add swap space to prevent OOM
-        run: |
-          sudo fallocate -l 6G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-          sudo swapon --show
+    - name: Install requirements in requirements.txt if it exists
+      run: |
+        if [ -f requirements.txt ]; then
+          python3 -m pip install -r requirements.txt
+        fi
+      shell: bash
 
-      - name: Install system dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y git zip unzip python3-pip autoconf \
-            libtool pkg-config zlib1g-dev libncurses6 libncursesw6 \
-            libtinfo6 cmake libffi-dev libssl-dev
-        shell: bash
-
-      - name: Prepare virtual environment
-        run: |
-          python3 -m venv venv
-          source venv/bin/activate
-          echo "Using Python==$(python --version)"
-        shell: bash
-
-      - name: Install Python dependencies
-        run: |
-          source venv/bin/activate
-          python3 -m pip install --upgrade pip
-          python3 -m pip install --upgrade Cython==0.29.33 buildozer
-        shell: bash
-
-      - name: Install requirements.txt if exists
-        run: |
-          source venv/bin/activate
-          if [ -f requirements.txt ]; then
-            python3 -m pip install -r requirements.txt
-          fi
-        shell: bash
-
-      - name: Export Android environment variables
-        run: |
-          echo "ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
-          echo "ANDROIDSDK=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
-          echo "ANDROIDNDK=$HOME/.buildozer/android/platform/android-ndk-r25b" >> $GITHUB_ENV
-          echo "ANDROIDAPI=31" >> $GITHUB_ENV
-          echo "ANDROIDMINAPI=21" >> $GITHUB_ENV
-
-      - name: Initialize Buildozer (download SDK/NDK)
-        run: |
-          source venv/bin/activate
-          buildozer android debug || true
-        shell: bash
-
-      - name: Find sdkmanager path
-        id: find_sdkmanager
-        run: |
-          SDKMANAGER_PATH=$(find $ANDROID_HOME -type f -name sdkmanager | head -n 1)
-          if [ -z "$SDKMANAGER_PATH" ]; then
-            echo "sdkmanager not found!"
-            exit 1
-          fi
-          echo "SDKMANAGER_PATH=$SDKMANAGER_PATH" >> $GITHUB_ENV
-          echo "Found sdkmanager at $SDKMANAGER_PATH"
-
-      - name: Accept Android SDK licenses
-        run: |
-          set +e
-          for i in {1..5}; do
-            (yes || true) | "$SDKMANAGER_PATH" --licenses --sdk_root="$ANDROID_HOME" --verbose && break || sleep 5
-          done
-          set -e
-        shell: bash
-
-      - name: Install Android SDK platform-tools and build-tools
-        run: |
-          set +e
-          for i in {1..5}; do
-            "$SDKMANAGER_PATH" --sdk_root="$ANDROID_HOME" --verbose \
-              "platform-tools" \
-              "platforms;android-31" \
-              "build-tools;30.0.3" && break || sleep 5
-          done
-          set -e
-        shell: bash
-
-      - name: Verify build-tools installation
-        run: |
-          ls -la $ANDROID_HOME/build-tools
-        shell: bash
-
-      - name: Clean Buildozer previous builds
-        run: |
-          source venv/bin/activate
-          buildozer android clean
-        shell: bash
-
-      - name: Build APK with Buildozer (log to file)
-        run: |
-          source venv/bin/activate
-          buildozer android debug | tee buildozer_build.log
-        shell: bash
-
-      - name: Show last 200 lines of build log
-        run: tail -n 200 buildozer_build.log
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: apk
-          path: '**/*.apk'
-          if-no-files-found: warn
-          compression-level: 6
-          overwrite: false
-          include-hidden-files: false
+    - name: Build with Buildozer
+      run: |
+        ${{ inputs.buildozer-cmd }}
+      shell: bash
