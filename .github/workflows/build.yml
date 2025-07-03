@@ -29,14 +29,15 @@ jobs:
             libncurses6 \
             zlib1g-dev \
             libffi-dev \
-            libssl-dev
+            libssl-dev \
+            libsqlite3-dev
 
-      - name: Install Buildozer
+      - name: Install Buildozer and dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install cython==0.29.36 buildozer
+          python -m pip install --upgrade pip virtualenv
+          pip install --user cython==0.29.36 buildozer==1.5.0
 
-      - name: Setup Android SDK with guaranteed license acceptance
+      - name: Setup Android SDK
         run: |
           # Create Android SDK directory
           mkdir -p ~/android-sdk
@@ -47,40 +48,43 @@ jobs:
           mv ~/android-sdk/cmdline-tools/cmdline-tools ~/android-sdk/cmdline-tools/latest
 
           # Set environment variables
-          echo "ANDROID_SDK_ROOT=~/android-sdk" >> $GITHUB_ENV
-          echo "PATH=~/android-sdk/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$PATH" >> $GITHUB_ENV
+          echo "ANDROID_NDK_HOME=$HOME/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
 
-          # Pre-accept all licenses
+          # Accept licenses
           mkdir -p ~/android-sdk/licenses
           echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/android-sdk/licenses/android-sdk-license
           echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > ~/android-sdk/licenses/android-sdk-preview-license
-          echo -e "\n601085b94cd77f0b54ff86406957099ebe79c4d6" > ~/android-sdk/licenses/android-go-sdk-license
-          echo -e "\n33b6a2b64607f11b759f320ef9dff4ae5c47d97a" > ~/android-sdk/licenses/google-gdk-license
 
-          # Install required components (using older but stable versions)
-          ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --install \
+          # Install required components
+          yes | ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --install \
             "platform-tools" \
             "platforms;android-33" \
-            "build-tools;30.0.3" \
+            "build-tools;34.0.0" \
             "ndk;25.2.9519653"
 
           # Verify installation
-          ls -la ~/android-sdk/build-tools/30.0.3/
-          ~/android-sdk/build-tools/30.0.3/aidl --version || echo "AIDL verification failed"
+          ~/android-sdk/platform-tools/adb version
+          ~/android-sdk/build-tools/34.0.0/aapt version
 
-      - name: Configure Buildozer environment
+      - name: Configure Buildozer
         run: |
-          # Create expected directory structure
+          # Create symlink structure expected by Buildozer
           mkdir -p ~/.buildozer/android/platform
           ln -sfn ~/android-sdk ~/.buildozer/android/platform/android-sdk
           
-          # Initialize Buildozer if needed
+          # Initialize or update buildozer.spec
           if [ ! -f buildozer.spec ]; then
             buildozer init
-            sed -i "s/^#requirements = .*/requirements = python3,kivy/" buildozer.spec
-            sed -i "s/^#android.ndk_path = .*/android.ndk_path = \/home\/runner\/android-sdk\/ndk\/25.2.9519653/" buildozer.spec
-            sed -i "s/^#android.sdk_path = .*/android.sdk_path = \/home\/runner\/android-sdk/" buildozer.spec
           fi
+          
+          # Update critical settings
+          sed -i "s/^#android.accept_sdk_license = .*/android.accept_sdk_license = True/" buildozer.spec
+          sed -i "s/^#android.ndk_path = .*/android.ndk_path = $HOME\/android-sdk\/ndk\/25.2.9519653/" buildozer.spec
+          sed -i "s/^#android.sdk_path = .*/android.sdk_path = $HOME\/android-sdk/" buildozer.spec
+          sed -i "s/^#android.sdk_manager_path = .*/android.sdk_manager_path = $HOME\/android-sdk\/cmdline-tools\/latest\/bin\/sdkmanager/" buildozer.spec
+          sed -i "s/^#p4a.branch = .*/p4a.branch = develop/" buildozer.spec
 
       - name: Build APK
         run: |
@@ -93,7 +97,10 @@ jobs:
           # Check build result
           if [ ${PIPESTATUS[0]} -ne 0 ]; then
             echo "=== BUILD FAILED ==="
+            echo "Last 100 lines of build log:"
             tail -n 100 build.log
+            echo "=== BUILD FAILURE ANALYSIS ==="
+            grep -i "error\|fail\|exception\|warning" build.log | sort | uniq -c | sort -nr
             exit 1
           fi
 
@@ -103,10 +110,12 @@ jobs:
         with:
           name: kivy-app
           path: bin/*.apk
+          retention-days: 5
 
       - name: Upload build log
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
           path: build.log
+          retention-days: 5
