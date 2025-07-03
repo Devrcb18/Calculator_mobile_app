@@ -87,16 +87,20 @@ jobs:
       - name: Accept Android SDK licenses
         run: |
           set +e
-          for i in {1..3}; do
-            (yes || true) | "$SDKMANAGER_PATH" --licenses --verbose && break || sleep 2
+          for i in {1..5}; do
+            (yes || true) | "$SDKMANAGER_PATH" --licenses --verbose && break || sleep 5
           done
           set -e
         shell: bash
 
-      # Install Android Build Tools 36
+      # Install Android Build Tools 36 (with retries)
       - name: Install Android Build Tools 36
         run: |
-          "$SDKMANAGER_PATH" --verbose "build-tools;36.0.0"
+          set +e
+          for i in {1..5}; do
+            "$SDKMANAGER_PATH" --verbose "build-tools;36.0.0" && break || sleep 5
+          done
+          set -e
         shell: bash
 
       # Build your APK
