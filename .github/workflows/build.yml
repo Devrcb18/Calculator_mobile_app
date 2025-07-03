@@ -11,6 +11,15 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Ensure all files are checked out
+
+      - name: Verify repository contents
+        run: |
+          echo "Repository contents:"
+          ls -la
+          echo "Checking for requirements files:"
+          ls -la requirements.txt pyproject.toml setup.py || echo "No requirements files found"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -30,76 +39,62 @@ jobs:
             libncurses6 \
             zlib1g-dev \
             libffi-dev \
-            libssl-dev \
-            libxml2-dev \
-            libxslt1-dev
+            libssl-dev
 
-      - name: Install Buildozer and dependencies
+      - name: Create default requirements if missing
+        run: |
+          if [ ! -f requirements.txt ]; then
+            echo "Creating default requirements.txt"
+            echo "kivy>=2.3.0" > requirements.txt
+            echo "buildozer>=1.5.0" >> requirements.txt
+          fi
+          cat requirements.txt
+
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip wheel
-          pip install --no-cache-dir cython==0.29.36 buildozer
+          pip install -r requirements.txt
+          pip install cython==0.29.36 buildozer
+
+      - name: Initialize Buildozer if needed
+        run: |
+          if [ ! -f buildozer.spec ]; then
+            echo "Initializing Buildozer"
+            buildozer init
+            sed -i "s/^requirements = .*/requirements = $(grep -v '^#' requirements.txt | tr '\n' ',' | sed 's/,$//')/" buildozer.spec
+          fi
+          cat buildozer.spec
 
       - name: Setup Android environment
         run: |
-          # Create Android SDK directory
           mkdir -p ~/android-sdk
-
-          # Download command line tools
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
           unzip -q cmdline-tools.zip -d ~/android-sdk/cmdline-tools
           mv ~/android-sdk/cmdline-tools/cmdline-tools ~/android-sdk/cmdline-tools/latest
 
-          # Set environment variables
           echo "ANDROID_SDK_ROOT=~/android-sdk" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=~/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
           echo "PATH=~/android-sdk/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
 
-          # Accept licenses
           yes | ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-          # Install Android components
           ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --install \
             "platform-tools" \
             "platforms;android-34" \
             "build-tools;34.0.0" \
-            "ndk;25.2.9519653" \
-            "cmake;3.22.1"
+            "ndk;25.2.9519653"
 
-          # Update PATH
           echo "PATH=~/android-sdk/platform-tools:~/android-sdk/build-tools/34.0.0:$PATH" >> $GITHUB_ENV
 
-          # Verify installation
-          ~/android-sdk/build-tools/34.0.0/aidl --version || echo "AIDL verification failed"
-
-      - name: Configure Buildozer
+      - name: Build APK
         run: |
-          # Create expected directory structure
-          mkdir -p ~/.buildozer/android/platform
-          ln -sfn ~/android-sdk ~/.buildozer/android/platform/android-sdk
-          ln -sfn ~/android-sdk/ndk/25.2.9519653 ~/.buildozer/android/platform/android-ndk-r25b
-
-          # Initialize Buildozer
-          buildozer init || true
-          cat buildozer.spec
-
-      - name: Build APK (with detailed logging)
-        run: |
-          set -x  # Enable debug output
-          echo "Python path: $(which python)"
-          echo "Buildozer path: $(which buildozer)"
-          echo "Android SDK path: $ANDROID_SDK_ROOT"
-          echo "Current PATH: $PATH"
-          
-          # Run build with verbose output
+          echo "=== Build Environment ==="
+          echo "Python: $(which python)"
+          echo "Buildozer: $(which buildozer)"
+          echo "Android SDK: $ANDROID_SDK_ROOT"
+          echo "=== Starting Build ==="
           buildozer -v android debug 2>&1 | tee build.log
-          
-          # Check build result
           if [ ${PIPESTATUS[0]} -ne 0 ]; then
             echo "=== BUILD FAILED ==="
-            echo "Last 50 lines of log:"
             tail -n 50 build.log
-            echo "Checking for APK files:"
-            ls -la bin/ || true
             exit 1
           fi
 
@@ -111,7 +106,7 @@ jobs:
           path: bin/*.apk
 
       - name: Upload build log
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
