@@ -6,17 +6,16 @@ on:
 
 jobs:
   build-android:
-    name: Build for Android
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: Install system dependencies
         run: |
@@ -27,6 +26,7 @@ jobs:
             zip \
             unzip \
             openjdk-17-jdk \
+            libncurses5 \
             libncurses6 \
             zlib1g-dev \
             libffi-dev \
@@ -40,126 +40,69 @@ jobs:
             make \
             patch
 
-      - name: Install Buildozer and dependencies
+      - name: Upgrade pip and install Buildozer dependencies
         run: |
-          python -m pip install --upgrade pip virtualenv
-          pip install --user cython==0.29.36 buildozer==1.5.0
-          pip install --user python-for-android==2024.1.21
-          pip install --user kivy==2.2.1 kivymd
+          python -m pip install --upgrade pip
+          pip install cython==0.29.36 buildozer==1.5.0 python-for-android==2024.1.21 kivy==2.2.1 kivymd
 
-      - name: Clean up conflicting Android installations
-        run: |
-          sudo rm -rf /usr/local/lib/android/sdk/ndk/*
-          sudo rm -rf /usr/local/lib/android/sdk/ndk-bundle
-
-      - name: Setup Android SDK and NDK
+      - name: Install Android command line tools
         run: |
           mkdir -p $HOME/android-sdk/cmdline-tools
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
           unzip -q cmdline-tools.zip -d $HOME/android-sdk/cmdline-tools
           mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
 
+      - name: Set environment variables
+        run: |
           echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$PATH" >> $GITHUB_ENV
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
           echo "ANDROID_NDK_HOME=$HOME/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=$HOME/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
+          echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
 
+      - name: Accept Android licenses
+        run: |
           mkdir -p $HOME/android-sdk/licenses
           echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $HOME/android-sdk/licenses/android-sdk-license
           echo "84831b9409646a918e30573bab4c9c91346d8abd" > $HOME/android-sdk/licenses/android-sdk-preview-license
-          echo "d56f5187479451eabf01fb78af6dfcb131a6481e" > $HOME/android-sdk/licenses/android-sdk-arm-dbt-license
-          echo "e9acab5b5fbb560a72cfaecce8946896ff6aab9d" > $HOME/android-sdk/licenses/android-sdk-build-tools-license
 
-          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --install \
+      - name: Install Android SDK components
+        run: |
+          yes | sdkmanager --sdk_root=${ANDROID_SDK_ROOT} --licenses
+          sdkmanager --sdk_root=${ANDROID_SDK_ROOT} --install \
             "platform-tools" \
             "platforms;android-33" \
             "build-tools;34.0.0" \
-            "build-tools;36.0.0" \
             "ndk;25.2.9519653"
 
-          $HOME/android-sdk/platform-tools/adb version
-          $HOME/android-sdk/build-tools/34.0.0/aapt version || true
-          $HOME/android-sdk/build-tools/36.0.0/aapt version || true
-
-      - name: Configure Buildozer
+      - name: Configure Buildozer spec
         run: |
-          mkdir -p ~/.buildozer/android/platform
-          ln -sfn $HOME/android-sdk ~/.buildozer/android/platform/android-sdk
-
           if [ ! -f buildozer.spec ]; then
-            cat << 'EOL' > buildozer.spec
-[app]
-title = My Kivy App
-package.name = myapp
-package.domain = org.kivy
-source.dir = .
-version = 0.1
-requirements = python3,kivy==2.2.1
-android.api = 33
-android.minapi = 21
-android.sdk_path = $HOME/android-sdk
-android.ndk_path = $HOME/android-sdk/ndk/25.2.9519653
-android.ndk_version = 25.2.9519653
-android.arch = arm64-v8a
-android.accept_sdk_license = True
-log_level = 2
-android.skip_update = True
-p4a.branch = master
-p4a.bootstrap = sdl2
-EOL
+            buildozer init
           fi
 
-          sed -i "s|^#\?android.accept_sdk_license = .*|android.accept_sdk_license = True|" buildozer.spec || true
-          sed -i "s|^#\?android.ndk_path = .*|android.ndk_path = $HOME/android-sdk/ndk/25.2.9519653|" buildozer.spec || true
-          sed -i "s|^#\?android.sdk_path = .*|android.sdk_path = $HOME/android-sdk|" buildozer.spec || true
-          sed -i "s|^#\?requirements = .*|requirements = python3,kivy==2.2.1|" buildozer.spec || true
-          sed -i "s|^#\?android.api = .*|android.api = 33|" buildozer.spec || true
-          sed -i "s|^#\?android.minapi = .*|android.minapi = 21|" buildozer.spec || true
-          sed -i "s|^#\?android.ndk_version = .*|android.ndk_version = 25.2.9519653|" buildozer.spec || true
-          sed -i "s|^#\?log_level = .*|log_level = 2|" buildozer.spec || true
+          sed -i "s|^#* *requirements =.*|requirements = python3,kivy==2.2.1,kivymd|" buildozer.spec
+          sed -i "s|^#* *android.api =.*|android.api = 33|" buildozer.spec
+          sed -i "s|^#* *android.minapi =.*|android.minapi = 21|" buildozer.spec
+          sed -i "s|^#* *android.sdk_path =.*|android.sdk_path = $HOME/android-sdk|" buildozer.spec
+          sed -i "s|^#* *android.ndk_path =.*|android.ndk_path = $HOME/android-sdk/ndk/25.2.9519653|" buildozer.spec
+          sed -i "s|^#* *android.ndk_version =.*|android.ndk_version = 25.2.9519653|" buildozer.spec
+          sed -i "s|^#* *android.accept_sdk_license =.*|android.accept_sdk_license = True|" buildozer.spec
+          sed -i "s|^#* *android.arch =.*|android.arch = arm64-v8a|" buildozer.spec
 
       - name: Build APK
         run: |
-          buildozer android clean || true
-          rm -rf .buildozer/android/platform/build-* || true
-
-          export GRADLE_OPTS="-Xmx2048m -Dorg.gradle.daemon=false"
-          export ANDROID_NDK_HOME=$HOME/android-sdk/ndk/25.2.9519653
-          export ANDROID_SDK_ROOT=$HOME/android-sdk
-          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-
-          if ! buildozer -v android debug > build.log 2>&1; then
-            echo "=== First build failed ==="
-            echo "Trying alternative architecture..."
-
-            sed -i "s|android.arch = arm64-v8a|android.arch = armeabi-v7a|" buildozer.spec
-            buildozer android clean || true
-            rm -rf .buildozer/android/platform/build-* || true
-
-            if ! buildozer -v android debug > build2.log 2>&1; then
-              echo "=== Build failed ==="
-              echo "First build log tail:"
-              tail -n 50 build.log
-              echo "Second build log tail:"
-              tail -n 50 build2.log
-              exit 1
-            fi
-          fi
+          buildozer android clean
+          buildozer android debug
 
       - name: Upload APK artifact
-        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: kivy-app
+          name: kivy-apk
           path: bin/*.apk
-          retention-days: 5
 
-      - name: Upload build logs
-        if: always()
+      - name: Upload buildozer.spec for reference
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
-          path: |
-            build.log
-            build2.log
-          retention-days: 5
+          name: buildozer-spec
+          path: buildozer.spec
