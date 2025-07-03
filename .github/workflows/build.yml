@@ -82,14 +82,18 @@ jobs:
           echo "SDKMANAGER_PATH=$SDKMANAGER_PATH" >> $GITHUB_ENV
           echo "Found sdkmanager at $SDKMANAGER_PATH"
 
-      - name: Accept Android SDK licenses
+      - name: Accept Android SDK licenses (with retry)
         run: |
-          yes | "$SDKMANAGER_PATH" --licenses || true
+          for i in {1..3}; do
+            yes | "$SDKMANAGER_PATH" --licenses --verbose && break || sleep 5
+          done
         shell: bash
 
-      - name: Install Android Build Tools 36
+      - name: Install Android Build Tools 36 (with retry)
         run: |
-          "$SDKMANAGER_PATH" "build-tools;36.0.0"
+          for i in {1..3}; do
+            "$SDKMANAGER_PATH" --verbose "build-tools;36.0.0" && break || sleep 5
+          done
         shell: bash
 
       - name: Build with Buildozer
