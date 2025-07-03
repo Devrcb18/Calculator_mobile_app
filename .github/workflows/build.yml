@@ -1,88 +1,110 @@
 name: Build Kivy APK
+
 on:
   push:
-    branches: [main]
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
-  build-android:
-    name: Build APK
+  build:
     runs-on: ubuntu-latest
-
+    
     steps:
-      - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            python3-pip git zip unzip \
-            openjdk-17-jdk \
-            zlib1g-dev libffi-dev libssl-dev libsqlite3-dev \
-            autoconf automake libtool pkg-config cmake make patch \
-            ninja-build gettext libfreetype6-dev
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          git \
+          python3-pip \
+          python3-setuptools \
+          python3-dev \
+          ffmpeg \
+          libsdl2-dev \
+          libsdl2-image-dev \
+          libsdl2-mixer-dev \
+          libsdl2-ttf-dev \
+          libportmidi-dev \
+          libswscale-dev \
+          libavformat-dev \
+          libavcodec-dev \
+          zlib1g-dev \
+          libgstreamer1.0-dev \
+          libgstreamer-plugins-base1.0-dev
 
-      - name: Setup Android SDK
-        run: |
-          mkdir -p ~/android-sdk
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-          unzip -q cmdline-tools.zip -d ~/android-sdk/cmdline-tools
-          mv ~/android-sdk/cmdline-tools/cmdline-tools ~/android-sdk/cmdline-tools/latest
+    - name: Install Java 11
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'adopt'
+        java-version: '11'
 
-          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v2
 
-          mkdir -p ~/android-sdk/licenses
-          echo -e "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/android-sdk/licenses/android-sdk-license
-          echo -e "84831b9409646a918e30573bab4c9c91346d8abd" > ~/android-sdk/licenses/android-sdk-preview-license
+    - name: Install Android SDK components
+      run: |
+        sdkmanager --install "platform-tools" "platforms;android-30" "build-tools;30.0.3"
+        sdkmanager --install "ndk;21.4.7075529"
 
-          yes | ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --install \
-            "platform-tools" "platforms;android-33" \
-            "build-tools;34.0.0" "ndk;25.2.9519653" "cmake;3.22.1"
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install buildozer cython==0.29.33
+        pip install kivy
 
-      - name: Install Buildozer
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install buildozer cython
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+    - name: Create buildozer.spec if it doesn't exist
+      run: |
+        if [ ! -f buildozer.spec ]; then
+          buildozer init
+        fi
 
-      - name: Create buildozer.spec
-        run: |
-          if [ ! -f buildozer.spec ]; then
-            buildozer init
-          fi
-          buildozer android clean
+    - name: Configure buildozer.spec
+      run: |
+        # Update buildozer.spec with required settings
+        sed -i 's/android.ndk_path = .*/android.ndk_path = \/usr\/local\/lib\/android\/sdk\/ndk\/21.4.7075529/' buildozer.spec
+        sed -i 's/android.sdk_path = .*/android.sdk_path = \/usr\/local\/lib\/android\/sdk/' buildozer.spec
+        sed -i 's/android.accept_sdk_license = .*/android.accept_sdk_license = True/' buildozer.spec
 
-      - name: Build APK
-        run: |
-          echo "[app]
-title = MyApp
-package.name = myapp
-package.domain = org.test
-source.dir = .
-source.include_exts = py,png,jpg,kv,atlas
-version = 0.1
-requirements = python3,kivy,pillow
-orientation = portrait
+    - name: Build APK
+      run: |
+        buildozer android debug
+      env:
+        ANDROID_HOME: /usr/local/lib/android/sdk
+        ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+        ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/21.4.7075529
 
-[buildozer]
-log_level = 2
-android.accept_sdk_license = True
-android.sdk_path = $HOME/android-sdk
-android.ndk_path = $HOME/android-sdk/ndk/25.2.9519653
-android.api = 33
-android.minapi = 21" > buildozer.spec
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: kivy-app-debug
+        path: bin/*.apk
 
-          buildozer -v android debug
+    - name: Create Release (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: bin/*.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload APK
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: app
-          path: bin/*.apk
-          retention-days: 1
+    - name: Upload to Google Play (optional)
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      # Uncomment and configure if you want to auto-upload to Google Play
+      # You'll need to set up GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret
+      # uses: r0adkll/upload-google-play@v1
+      # with:
+      #   serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+      #   packageName: com.yourcompany.yourapp
+      #   releaseFiles: bin/*.apk
+      #   track: internal
+      run: echo "Skipping Google Play upload. Configure the commented section above to enable."
