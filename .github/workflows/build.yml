@@ -20,7 +20,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt update
-        sudo apt install -y zip unzip openjdk-17-jdk libncurses5
+        sudo apt install -y zip unzip openjdk-17-jdk libncurses6 lib32stdc++6
 
     - name: Install Python dependencies
       run: |
@@ -32,7 +32,7 @@ jobs:
         # Create Android SDK directory
         mkdir -p ~/android-sdk
 
-        # Download and extract command line tools
+        # Download command line tools
         wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
         unzip cmdline-tools.zip -d ~/android-sdk/cmdline-tools
         mv ~/android-sdk/cmdline-tools/cmdline-tools ~/android-sdk/cmdline-tools/latest
@@ -40,60 +40,48 @@ jobs:
         # Set environment variables
         echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
         echo "ANDROID_NDK_HOME=$HOME/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
-        echo "PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$HOME/android-sdk/build-tools/34.0.0:$PATH" >> $GITHUB_ENV
+        echo "PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
 
-        # Accept licenses (retry up to 3 times)
-        for i in {1..3}; do
-          yes | ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses && break
-          sleep 5
-        done
+        # Accept licenses
+        yes | ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-        # Install required components
+        # Install Android components
         ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --install \
           "platform-tools" \
           "platforms;android-33" \
           "build-tools;34.0.0" \
-          "ndk;25.2.9519653" \
-          "cmake;3.22.1"
+          "ndk;25.2.9519653"
+
+        # Update PATH with installed components
+        echo "PATH=$HOME/android-sdk/platform-tools:$HOME/android-sdk/build-tools/34.0.0:$PATH" >> $GITHUB_ENV
 
         # Verify installation
-        echo "Build tools contents:"
         ls -la ~/android-sdk/build-tools/34.0.0/
-        echo "AIDL version:"
         ~/android-sdk/build-tools/34.0.0/aidl --version || echo "AIDL check failed"
 
-    - name: Configure Buildozer environment
+    - name: Configure Buildozer
       run: |
-        # Create expected directory structure
         mkdir -p ~/.buildozer/android/platform
         ln -sfn ~/android-sdk ~/.buildozer/android/platform/android-sdk
-
-        # Verify paths
         echo "Buildozer SDK path:"
         ls -la ~/.buildozer/android/platform/
-        echo "Environment:"
-        env | sort
 
     - name: Build APK
       run: |
-        # Create debug log file
-        echo "Starting build..." > build.log
-
-        # Verify tools
-        echo -e "\n\n=== Tool versions ===" >> build.log
-        which python >> build.log
-        python --version >> build.log
-        which buildozer >> build.log
-        buildozer --version >> build.log
-        which aidl >> build.log
-        aidl --version >> build.log 2>&1 || echo "AIDL check failed" >> build.log
-
-        # Run buildozer with full debug output
-        echo -e "\n\n=== Build output ===" >> build.log
-        buildozer -v android debug >> build.log 2>&1 || (echo "Build failed" >> build.log && false)
-
-        # Show last 100 lines of log if successful
-        tail -n 100 build.log
+        echo "=== Environment ==="
+        env | sort
+        echo "=== Tool versions ==="
+        which python && python --version
+        which buildozer && buildozer --version
+        which aidl && aidl --version || echo "AIDL not found"
+        
+        echo "=== Starting build ==="
+        buildozer -v android debug 2>&1 | tee build.log
+        if [ ${PIPESTATUS[0]} -ne 0 ]; then
+          echo "Build failed. Last 100 lines:"
+          tail -n 100 build.log
+          exit 1
+        fi
 
     - name: Upload APK artifact
       if: success()
