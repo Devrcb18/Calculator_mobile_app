@@ -28,16 +28,12 @@ jobs:
         pip install cython
         pip install buildozer
 
-    - name: Cache buildozer global directory
+    - name: Cache buildozer directories
       uses: actions/cache@v4
       with:
-        path: .buildozer_global
-        key: buildozer-global-${{ hashFiles('buildozer.spec') }}
-
-    - name: Cache buildozer local directory
-      uses: actions/cache@v4
-      with:
-        path: .buildozer
+        path: |
+          .buildozer
+          .buildozer_global
         key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
 
     - name: Install Android SDK and NDK
@@ -48,20 +44,28 @@ jobs:
         mv ${HOME}/android-sdk/cmdline-tools/cmdline-tools ${HOME}/android-sdk/cmdline-tools/latest
 
         export ANDROID_HOME=${HOME}/android-sdk
-        export PATH=${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/34.0.0:${PATH}
+        export PATH=${ANDROID_HOME}/cmdline-tools/latest/bin:${PATH}
 
-        sdkmanager --update
         yes | sdkmanager --licenses
+        sdkmanager --update
+        sdkmanager "platform-tools" "platforms;android-33" "build-tools;34.0.0" "ndk;25.2.9519653"
+        sdkmanager "cmdline-tools;latest"
 
-        sdkmanager "platform-tools" "platforms;android-33" "build-tools;34.0.0" "ndk;25.2.9519653" "cmdline-tools;latest"
+        # Verify AIDL is available
+        ls -la ${ANDROID_HOME}/build-tools/34.0.0/aidl || echo "AIDL not found!"
 
     - name: Build APK with Buildozer
       run: |
-        export ANDROIDSDK=${HOME}/android-sdk
-        export ANDROIDNDK=${ANDROIDSDK}/ndk/25.2.9519653
-        export PATH=${ANDROIDSDK}/cmdline-tools/latest/bin:${ANDROIDSDK}/platform-tools:${ANDROIDSDK}/build-tools/34.0.0:${PATH}
+        export ANDROID_SDK_ROOT=${HOME}/android-sdk
+        export ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/25.2.9519653
+        export PATH=${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools:${ANDROID_SDK_ROOT}/build-tools/34.0.0:${PATH}
 
-        buildozer android debug
+        # Verify tools are in PATH
+        which aidl
+        which aapt
+        which zipalign
+
+        buildozer -v android debug
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
