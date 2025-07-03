@@ -38,33 +38,78 @@ jobs:
 
       - name: Setup Android SDK
         run: |
+          # Set up directories
           mkdir -p ~/android-sdk/cmdline-tools
+          
+          # Download and extract command line tools
           wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
           unzip cmdline-tools.zip -d ~/android-sdk/cmdline-tools
           mv ~/android-sdk/cmdline-tools/cmdline-tools ~/android-sdk/cmdline-tools/latest
 
+          # Set environment variables
           echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
+          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+          echo "PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
 
+          # Accept licenses and install components
           yes | ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          ~/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+          ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --install \
             "platform-tools" \
             "platforms;android-34" \
             "build-tools;34.0.0" \
             "ndk;25.2.9519653"
 
-          echo "$HOME/android-sdk/build-tools/34.0.0:$PATH" >> $GITHUB_ENV
+          # Update PATH with build tools
+          echo "PATH=$HOME/android-sdk/platform-tools:$HOME/android-sdk/build-tools/34.0.0:$PATH" >> $GITHUB_ENV
 
-          # Verify aidl installation
-          ls -la ~/android-sdk/build-tools/34.0.0/aidl
-          ~/android-sdk/build-tools/34.0.0/aidl --version || echo "AIDL check failed"
+          # Verify AIDL installation
+          echo "Checking AIDL installation..."
+          $HOME/android-sdk/build-tools/34.0.0/aidl --version || echo "AIDL verification failed"
+          echo "AIDL path: $(which aidl)"
+
+      - name: Configure Buildozer environment
+        run: |
+          # Create expected directory structure
+          mkdir -p ~/.buildozer/android/platform/android-sdk
+          ln -sfn $HOME/android-sdk ~/.buildozer/android/platform/android-sdk
+
+          # Verify paths
+          echo "Android SDK Path: $ANDROID_SDK_ROOT"
+          echo "Build tools contents:"
+          ls -la $ANDROID_SDK_ROOT/build-tools/34.0.0/
+          echo "Current PATH: $PATH"
 
       - name: Build with Buildozer
         run: |
-          buildozer -v android debug
+          # Print environment for debugging
+          env | sort
+          
+          # Verify tools
+          which python
+          python --version
+          which buildozer
+          buildozer --version
+          which aidl
+          aidl --version || echo "AIDL check failed"
+
+          # Run build with detailed logging
+          buildozer -v android debug 2>&1 | tee build.log
+          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+            echo "Build failed. Last 100 lines:"
+            tail -n 100 build.log
+            exit 1
+          fi
 
       - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: kivy-app
+          name: kivy-apk
           path: bin/*.apk
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
