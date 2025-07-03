@@ -5,7 +5,7 @@ on:
 
 jobs:
   build-android:
-    name: Build for Android
+    name: Build APK
     runs-on: ubuntu-latest
 
     steps:
@@ -42,37 +42,28 @@ jobs:
             gettext \
             libfreetype6-dev
 
-      - name: Clean up conflicting Android installations
+      - name: Clean up existing Android tools
         run: |
           sudo rm -rf /usr/local/lib/android/sdk/ndk/*
-          sudo rm -rf /usr/local/lib/android/sdk/ndk-bundle
 
       - name: Setup Android SDK
         run: |
-          # Create Android SDK directory
           mkdir -p ~/android-sdk
-          
-          # Download command line tools
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
           unzip -q cmdline-tools.zip -d ~/android-sdk/cmdline-tools
           mv ~/android-sdk/cmdline-tools/cmdline-tools ~/android-sdk/cmdline-tools/latest
 
-          # Create legacy tools directory
           mkdir -p ~/android-sdk/tools/bin
           ln -s ~/android-sdk/cmdline-tools/latest/bin/sdkmanager ~/android-sdk/tools/bin/sdkmanager
 
-          # Set environment variables
           echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
           echo "PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$HOME/android-sdk/platform-tools:$PATH" >> $GITHUB_ENV
           echo "ANDROID_NDK_HOME=$HOME/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=$HOME/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
 
-          # Accept licenses
           mkdir -p ~/android-sdk/licenses
           echo -e "\n24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/android-sdk/licenses/android-sdk-license
           echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > ~/android-sdk/licenses/android-sdk-preview-license
 
-          # Install required components
           yes | ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --install \
             "platform-tools" \
             "platforms;android-33" \
@@ -80,69 +71,75 @@ jobs:
             "ndk;25.2.9519653" \
             "cmake;3.22.1"
 
-          # Verify installation
-          ~/android-sdk/platform-tools/adb version
-          ~/android-sdk/build-tools/34.0.0/aapt version
+      - name: Install Buildozer
+        run: |
+          python -m pip install --user --upgrade pip wheel
+          python -m pip install --user buildozer==1.5.0 cython==0.29.36
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Configure Buildozer
         run: |
-          # Create symlink structure
-          mkdir -p ~/.buildozer/android/platform
-          ln -sfn ~/android-sdk ~/.buildozer/android/platform/android-sdk
-          
-          # Initialize or update buildozer.spec
           if [ ! -f buildozer.spec ]; then
             buildozer init
           fi
-          
-          # Update critical settings
-          sed -i "s|^#android.accept_sdk_license = .*|android.accept_sdk_license = True|" buildozer.spec
-          sed -i "s|^#android.ndk_path = .*|android.ndk_path = $HOME/android-sdk/ndk/25.2.9519653|" buildozer.spec
-          sed -i "s|^#android.sdk_path = .*|android.sdk_path = $HOME/android-sdk|" buildozer.spec
-          sed -i "s|^#android.sdk_manager_path = .*|android.sdk_manager_path = $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager|" buildozer.spec
-          sed -i "s|^#p4a.branch = .*|p4a.branch = develop|" buildozer.spec
-          sed -i "s|^#requirements = .*|requirements = python3,kivy,pillow,hostpython3|" buildozer.spec
-          sed -i "s|^#android.api = .*|android.api = 33|" buildozer.spec
-          sed -i "s|^#android.minapi = .*|android.minapi = 21|" buildozer.spec
-          sed -i "s|^#android.ndk_version = .*|android.ndk_version = 25.2.9519653|" buildozer.spec
-          sed -i "s|^#android.skip_update = .*|android.skip_update = True|" buildozer.spec
-          sed -i "s|^#log_level = .*|log_level = 2|" buildozer.spec
-          sed -i "s|^#p4a.cmake = .*|p4a.cmake = $HOME/android-sdk/cmake/3.22.1/bin/cmake|" buildozer.spec
+
+          cat << 'EOF' > buildozer.spec
+[app]
+title = MyApp
+package.name = myapp
+package.domain = org.test
+source.dir = .
+source.include_exts = py,png,jpg,kv,atlas
+version = 0.1
+requirements = python3,kivy,pillow
+orientation = portrait
+osx.python_version = 3
+osx.kivy_version = 2.2.1
+fullscreen = 0
+
+[buildozer]
+log_level = 2
+warn_on_root = 1
+android.accept_sdk_license = True
+android.sdk_path = $HOME/android-sdk
+android.ndk_path = $HOME/android-sdk/ndk/25.2.9519653
+android.sdk_manager_path = $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager
+android.api = 33
+android.minapi = 21
+android.ndk_version = 25.2.9519653
+android.skip_update = True
+p4a.branch = develop
+p4a.cmake = $HOME/android-sdk/cmake/3.22.1/bin/cmake
+EOF
 
       - name: Build APK
         run: |
-          # Set environment variables for build
           export FREETYPE_INCLUDE_DIR=/usr/include/freetype2
           export FREETYPE_LIBRARY=/usr/lib/x86_64-linux-gnu/libfreetype.so
           
-          # Clean previous builds
-          buildozer android clean || true
-          
-          # Build with verbose output
+          buildozer android clean
           buildozer -v android debug 2>&1 | tee build.log
           
-          # Check build result
           if [ ${PIPESTATUS[0]} -ne 0 ]; then
             echo "=== BUILD FAILED ==="
-            echo "Last 100 lines of build log:"
             tail -n 100 build.log
-            echo "=== BUILD FAILURE ANALYSIS ==="
-            grep -i "error\|fail\|exception\|warning" build.log | sort | uniq -c | sort -nr
+            echo "=== ERROR SUMMARY ==="
+            grep -i "error\|fail\|exception" build.log | sort | uniq -c | sort -nr
             exit 1
           fi
 
-      - name: Upload APK artifact
+      - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: kivy-app
+          name: app-release
           path: bin/*.apk
-          retention-days: 5
+          retention-days: 7
 
-      - name: Upload build log
-        if: always()
+      - name: Upload logs
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
+          name: build-logs
           path: build.log
-          retention-days: 5
+          retention-days: 7
