@@ -12,7 +12,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python
+    - name: Set up Python 3.10
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
@@ -22,63 +22,68 @@ jobs:
         sudo apt update
         sudo apt install -y zip unzip openjdk-17-jdk
 
-    - name: Install Buildozer and dependencies
+    - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install cython==0.29.36
-        pip install buildozer
-
-    - name: Cache buildozer directories
-      uses: actions/cache@v4
-      with:
-        path: |
-          .buildozer
-          .buildozer_global
-        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+        pip install cython==0.29.36 buildozer
 
     - name: Setup Android SDK
       run: |
         # Create Android SDK directory
-        mkdir -p ${HOME}/android-sdk
+        mkdir -p ~/android-sdk
 
         # Download and extract command line tools
         wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-        unzip -q cmdline-tools.zip -d ${HOME}/android-sdk/cmdline-tools
-        mv ${HOME}/android-sdk/cmdline-tools/cmdline-tools ${HOME}/android-sdk/cmdline-tools/latest
+        unzip cmdline-tools.zip -d ~/android-sdk/cmdline-tools
+        mv ~/android-sdk/cmdline-tools/cmdline-tools ~/android-sdk/cmdline-tools/latest
 
         # Set environment variables
-        echo "ANDROID_SDK_ROOT=${HOME}/android-sdk" >> $GITHUB_ENV
-        echo "${HOME}/android-sdk/cmdline-tools/latest/bin:${HOME}/android-sdk/platform-tools:${HOME}/android-sdk/build-tools/34.0.0:${PATH}" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=~/android-sdk" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=~/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
+        echo "PATH=~/android-sdk/cmdline-tools/latest/bin:~/android-sdk/platform-tools:~/android-sdk/build-tools/34.0.0:$PATH" >> $GITHUB_ENV
 
         # Accept licenses
-        yes | ${HOME}/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+        yes | ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
         # Install required components
-        ${HOME}/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+        ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --install \
           "platform-tools" \
           "platforms;android-33" \
           "build-tools;34.0.0" \
           "ndk;25.2.9519653"
 
         # Verify installation
-        ls -la ${HOME}/android-sdk/build-tools/34.0.0/
-        ${HOME}/android-sdk/build-tools/34.0.0/aidl --version
+        ls -la ~/android-sdk/build-tools/34.0.0/
+        ~/android-sdk/build-tools/34.0.0/aidl --version || echo "AIDL verification failed"
 
-    - name: Configure Buildozer environment
+    - name: Configure Buildozer
       run: |
         # Create expected directory structure
-        mkdir -p ~/.buildozer/android/platform/android-sdk
-        ln -s ${HOME}/android-sdk ~/.buildozer/android/platform/android-sdk
+        mkdir -p ~/.buildozer/android/platform
+        ln -sf ~/android-sdk ~/.buildozer/android/platform/android-sdk
 
-        # Set environment variables for Buildozer
-        echo "export ANDROID_SDK_ROOT=${HOME}/android-sdk" >> ~/.bashrc
-        echo "export ANDROID_NDK_HOME=${HOME}/android-sdk/ndk/25.2.9519653" >> ~/.bashrc
-        echo "export PATH=${HOME}/android-sdk/cmdline-tools/latest/bin:${HOME}/android-sdk/platform-tools:${HOME}/android-sdk/build-tools/34.0.0:${PATH}" >> ~/.bashrc
+        # Verify symlink
+        ls -la ~/.buildozer/android/platform/
 
-    - name: Build APK
+    - name: Build APK with Buildozer
       run: |
-        source ~/.bashrc
-        buildozer -v android debug
+        # Print environment for debugging
+        env | sort
+
+        # Verify tools are available
+        which aidl
+        which aapt
+        which zipalign
+
+        # Run buildozer with debug output
+        buildozer -v android debug 2>&1 | tee build.log
+
+        # Print build log if failed
+        if [ $? -ne 0 ]; then
+          echo "Build failed. Log:"
+          cat build.log
+          exit 1
+        fi
 
     - name: Upload APK artifact
       if: success()
@@ -86,3 +91,10 @@ jobs:
       with:
         name: kivy-apk
         path: bin/*.apk
+
+    - name: Upload build log
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: build.log
