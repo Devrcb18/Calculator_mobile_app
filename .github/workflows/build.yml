@@ -1,98 +1,42 @@
-name: Build Kivy APK
-
+name: CI
 on:
   push:
     branches: [ main ]
 
 jobs:
-  build-apk:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-20.04
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+uses: actions/checkout@v2
 
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+   
+name: Get Date
+        id: get-date
+        run: |
+          echo "::set-output name=date::$(/bin/date -u "+%Y%m%d")"
+        shell: bash
 
-    - name: Install system dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y zip unzip openjdk-17-jdk libncurses6 lib32stdc++6
+name: Cache Buildozer global directory
+        uses: actions/cache@v2
+        with:
+          path: .buildozer_global
+          key: buildozer-global-${{ hashFiles('buildozer.spec') }} # Replace with your path
 
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install cython==0.29.36 buildozer
+uses: actions/cache@v2
+        with:
+          path: .buildozer
+          key: ${{ runner.os }}-${{ steps.get-date.outputs.date }}-${{ hashFiles('buildozer.spec') }}
 
-    - name: Setup Android SDK
-      run: |
-        # Create Android SDK directory
-        mkdir -p ~/android-sdk
+name: Build with Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
+        with:
+          command: buildozer android debug
+          buildozer_version: stable
 
-        # Download command line tools
-        wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-        unzip cmdline-tools.zip -d ~/android-sdk/cmdline-tools
-        mv ~/android-sdk/cmdline-tools/cmdline-tools ~/android-sdk/cmdline-tools/latest
-
-        # Set environment variables
-        echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> $GITHUB_ENV
-        echo "ANDROID_NDK_HOME=$HOME/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
-        echo "PATH=$HOME/android-sdk/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
-
-        # Accept licenses
-        yes | ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-        # Install Android components
-        ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --install \
-          "platform-tools" \
-          "platforms;android-33" \
-          "build-tools;34.0.0" \
-          "ndk;25.2.9519653"
-
-        # Update PATH with installed components
-        echo "PATH=$HOME/android-sdk/platform-tools:$HOME/android-sdk/build-tools/34.0.0:$PATH" >> $GITHUB_ENV
-
-        # Verify installation
-        ls -la ~/android-sdk/build-tools/34.0.0/
-        ~/android-sdk/build-tools/34.0.0/aidl --version || echo "AIDL check failed"
-
-    - name: Configure Buildozer
-      run: |
-        mkdir -p ~/.buildozer/android/platform
-        ln -sfn ~/android-sdk ~/.buildozer/android/platform/android-sdk
-        echo "Buildozer SDK path:"
-        ls -la ~/.buildozer/android/platform/
-
-    - name: Build APK
-      run: |
-        echo "=== Environment ==="
-        env | sort
-        echo "=== Tool versions ==="
-        which python && python --version
-        which buildozer && buildozer --version
-        which aidl && aidl --version || echo "AIDL not found"
-        
-        echo "=== Starting build ==="
-        buildozer -v android debug 2>&1 | tee build.log
-        if [ ${PIPESTATUS[0]} -ne 0 ]; then
-          echo "Build failed. Last 100 lines:"
-          tail -n 100 build.log
-          exit 1
-        fi
-
-    - name: Upload APK artifact
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: kivy-apk
-        path: bin/*.apk
-
-    - name: Upload build log
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-log
-        path: build.log
+name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: package
+          path: ${{ steps.buildozer.outputs.filename }}
