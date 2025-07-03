@@ -44,6 +44,7 @@ jobs:
           python -m pip install --upgrade pip virtualenv
           pip install --user cython==0.29.33 buildozer==1.5.0
           pip install --user python-for-android==2024.1.21
+          pip install --user kivymd
 
       - name: Clean up conflicting Android installations
         run: |
@@ -102,7 +103,7 @@ jobs:
           sed -i "s|^#android.ndk_path = .*|android.ndk_path = $HOME/android-sdk/ndk/25.2.9519653|" buildozer.spec
           sed -i "s|^#android.sdk_path = .*|android.sdk_path = $HOME/android-sdk|" buildozer.spec
           sed -i "s|^#android.sdk_manager_path = .*|android.sdk_manager_path = $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager|" buildozer.spec
-          sed -i "s|^#p4a.branch = .*|p4a.branch = develop|" buildozer.spec
+          sed -i "s|^#p4a.branch = .*|p4a.branch = master|" buildozer.spec
           sed -i "s|^#requirements = .*|requirements = python3,kivy|" buildozer.spec
           sed -i "s|^#android.api = .*|android.api = 33|" buildozer.spec
           sed -i "s|^#android.minapi = .*|android.minapi = 21|" buildozer.spec
@@ -111,21 +112,29 @@ jobs:
           sed -i "s|^#log_level = .*|log_level = 2|" buildozer.spec
           sed -i "s|^#android.gradle_dependencies = .*|android.gradle_dependencies = |" buildozer.spec
           sed -i "s|^#p4a.local_recipes = .*|p4a.local_recipes = |" buildozer.spec
+          sed -i "s|^#p4a.bootstrap = .*|p4a.bootstrap = sdl2|" buildozer.spec
+          sed -i "s|^#android.arch = .*|android.arch = arm64-v8a|" buildozer.spec
 
       - name: Build APK
         run: |
-          # Clean previous builds
+          # Clean previous builds completely
           buildozer android clean || true
+          rm -rf .buildozer/android/packages/* || true
+          rm -rf .buildozer/android/platform/build-* || true
           
           # Remove problematic cached files
           rm -rf ~/.buildozer/android/packages/openssl* || true
+          rm -rf ~/.buildozer/android/packages/libffi* || true
           
-          # Build with verbose output and better error handling
+          # Set environment variables
           export GRADLE_OPTS="-Xmx2048m -Dorg.gradle.daemon=false"
           export ANDROID_NDK_HOME=$HOME/android-sdk/ndk/25.2.9519653
           export ANDROID_SDK_ROOT=$HOME/android-sdk
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          export P4A_BOOTSTRAP=sdl2
+          export P4A_ARCH=arm64-v8a
           
+          # Try with minimal requirements first
           buildozer -v android debug 2>&1 | tee build.log
           
           # Check build result
@@ -134,8 +143,23 @@ jobs:
             echo "Last 100 lines of build log:"
             tail -n 100 build.log
             echo "=== BUILD FAILURE ANALYSIS ==="
-            grep -i "error\|fail\|exception\|warning" build.log | sort | uniq -c | sort -nr
-            exit 1
+            grep -i "error\|fail\|exception\|warning" build.log | head -20
+            echo "=== Trying alternative approach ==="
+            
+            # Try with different architecture
+            sed -i "s|android.arch = arm64-v8a|android.arch = armeabi-v7a|" buildozer.spec
+            export P4A_ARCH=armeabi-v7a
+            
+            # Clean and retry
+            buildozer android clean || true
+            buildozer -v android debug 2>&1 | tee build2.log
+            
+            if [ ${PIPESTATUS[0]} -ne 0 ]; then
+              echo "=== SECOND BUILD ALSO FAILED ==="
+              echo "Last 50 lines of second build log:"
+              tail -n 50 build2.log
+              exit 1
+            fi
           fi
 
       - name: Upload APK artifact
@@ -151,5 +175,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: build.log
+          path: |
+            build.log
+            build2.log
           retention-days: 5
