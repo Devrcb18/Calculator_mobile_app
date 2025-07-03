@@ -64,7 +64,7 @@ jobs:
           fi
         shell: bash
 
-      # First run to initialize Buildozer and download SDK/NDK (will fail, that's OK)
+      # First run to initialize Buildozer and download SDK/NDK (may fail, that's OK)
       - name: Initialize Buildozer (SDK/NDK install)
         run: |
           source venv/bin/activate
