@@ -25,7 +25,7 @@ jobs:
     - name: Install Buildozer and dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install cython
+        pip install cython==0.29.36
         pip install buildozer
 
     - name: Cache buildozer directories
@@ -36,41 +36,52 @@ jobs:
           .buildozer_global
         key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
 
-    - name: Install Android SDK and NDK
+    - name: Setup Android SDK
       run: |
-        mkdir -p ${HOME}/android-sdk/cmdline-tools
+        # Create Android SDK directory
+        mkdir -p ${HOME}/android-sdk
+
+        # Download and extract command line tools
         wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
         unzip -q cmdline-tools.zip -d ${HOME}/android-sdk/cmdline-tools
         mv ${HOME}/android-sdk/cmdline-tools/cmdline-tools ${HOME}/android-sdk/cmdline-tools/latest
 
-        export ANDROID_HOME=${HOME}/android-sdk
-        export PATH=${ANDROID_HOME}/cmdline-tools/latest/bin:${PATH}
+        # Set environment variables
+        echo "ANDROID_SDK_ROOT=${HOME}/android-sdk" >> $GITHUB_ENV
+        echo "${HOME}/android-sdk/cmdline-tools/latest/bin:${HOME}/android-sdk/platform-tools:${HOME}/android-sdk/build-tools/34.0.0:${PATH}" >> $GITHUB_ENV
 
-        # Accept all licenses first
-        yes | sdkmanager --licenses || true
-        sdkmanager --update
-        
-        # Install specific versions that work with Kivy
-        sdkmanager "platform-tools" "platforms;android-33" "build-tools;34.0.0" "ndk;25.2.9519653"
-        sdkmanager "cmdline-tools;latest"
+        # Accept licenses
+        yes | ${HOME}/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+
+        # Install required components
+        ${HOME}/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+          "platform-tools" \
+          "platforms;android-33" \
+          "build-tools;34.0.0" \
+          "ndk;25.2.9519653"
 
         # Verify installation
-        ls -la ${ANDROID_HOME}/build-tools/34.0.0/
-        ${ANDROID_HOME}/build-tools/34.0.0/aidl --version
+        ls -la ${HOME}/android-sdk/build-tools/34.0.0/
+        ${HOME}/android-sdk/build-tools/34.0.0/aidl --version
 
-    - name: Build APK with Buildozer
+    - name: Configure Buildozer environment
       run: |
-        export ANDROID_SDK_ROOT=${HOME}/android-sdk
-        export ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/25.2.9519653
-        export PATH=${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools:${ANDROID_SDK_ROOT}/build-tools/34.0.0:${PATH}
-
-        # Create symlink for buildozer's expected path
+        # Create expected directory structure
         mkdir -p ~/.buildozer/android/platform/android-sdk
-        ln -s ${ANDROID_SDK_ROOT}/build-tools ~/.buildozer/android/platform/android-sdk/build-tools || true
+        ln -s ${HOME}/android-sdk ~/.buildozer/android/platform/android-sdk
 
+        # Set environment variables for Buildozer
+        echo "export ANDROID_SDK_ROOT=${HOME}/android-sdk" >> ~/.bashrc
+        echo "export ANDROID_NDK_HOME=${HOME}/android-sdk/ndk/25.2.9519653" >> ~/.bashrc
+        echo "export PATH=${HOME}/android-sdk/cmdline-tools/latest/bin:${HOME}/android-sdk/platform-tools:${HOME}/android-sdk/build-tools/34.0.0:${PATH}" >> ~/.bashrc
+
+    - name: Build APK
+      run: |
+        source ~/.bashrc
         buildozer -v android debug
 
     - name: Upload APK artifact
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: kivy-apk
