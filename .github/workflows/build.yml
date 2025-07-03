@@ -16,6 +16,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip'
 
       - name: Install system dependencies
         run: |
@@ -29,21 +30,23 @@ jobs:
             libncurses6 \
             zlib1g-dev \
             libffi-dev \
-            libssl-dev
+            libssl-dev \
+            libxml2-dev \
+            libxslt1-dev
 
       - name: Install Buildozer and dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install cython==0.29.36 buildozer
+          python -m pip install --upgrade pip wheel
+          pip install --no-cache-dir cython==0.29.36 buildozer
 
-      - name: Setup Android SDK and NDK
+      - name: Setup Android environment
         run: |
           # Create Android SDK directory
           mkdir -p ~/android-sdk
 
-          # Download and extract command line tools
-          wget https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip -d ~/android-sdk/cmdline-tools
+          # Download command line tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip -d ~/android-sdk/cmdline-tools
           mv ~/android-sdk/cmdline-tools/cmdline-tools ~/android-sdk/cmdline-tools/latest
 
           # Set environment variables
@@ -51,57 +54,52 @@ jobs:
           echo "ANDROID_NDK_ROOT=~/android-sdk/ndk/25.2.9519653" >> $GITHUB_ENV
           echo "PATH=~/android-sdk/cmdline-tools/latest/bin:$PATH" >> $GITHUB_ENV
 
-          # Accept licenses (with retry logic)
-          for i in {1..3}; do
-            yes | ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses && break
-            sleep 5
-          done
+          # Accept licenses
+          yes | ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-          # Install required components
+          # Install Android components
           ~/android-sdk/cmdline-tools/latest/bin/sdkmanager --install \
             "platform-tools" \
             "platforms;android-34" \
             "build-tools;34.0.0" \
-            "ndk;25.2.9519653"
+            "ndk;25.2.9519653" \
+            "cmake;3.22.1"
 
-          # Update PATH with installed components
+          # Update PATH
           echo "PATH=~/android-sdk/platform-tools:~/android-sdk/build-tools/34.0.0:$PATH" >> $GITHUB_ENV
 
           # Verify installation
-          echo "SDK contents:"
-          ls -la ~/android-sdk
-          echo "NDK contents:"
-          ls -la ~/android-sdk/ndk/25.2.9519653
-          ~/android-sdk/build-tools/34.0.0/aidl --version || echo "AIDL check failed"
+          ~/android-sdk/build-tools/34.0.0/aidl --version || echo "AIDL verification failed"
 
-      - name: Configure Buildozer environment
+      - name: Configure Buildozer
         run: |
           # Create expected directory structure
           mkdir -p ~/.buildozer/android/platform
           ln -sfn ~/android-sdk ~/.buildozer/android/platform/android-sdk
           ln -sfn ~/android-sdk/ndk/25.2.9519653 ~/.buildozer/android/platform/android-ndk-r25b
 
-          # Verify paths
-          echo "Buildozer SDK path:"
-          ls -la ~/.buildozer/android/platform/
-          echo "Current PATH: $PATH"
+          # Initialize Buildozer
+          buildozer init || true
+          cat buildozer.spec
 
-      - name: Build APK
+      - name: Build APK (with detailed logging)
         run: |
-          # Print environment for debugging
-          env | sort
-
-          # Verify tools
-          which python
-          which buildozer
-          which sdkmanager
-          which aidl
-
-          # Run build with detailed logging
+          set -x  # Enable debug output
+          echo "Python path: $(which python)"
+          echo "Buildozer path: $(which buildozer)"
+          echo "Android SDK path: $ANDROID_SDK_ROOT"
+          echo "Current PATH: $PATH"
+          
+          # Run build with verbose output
           buildozer -v android debug 2>&1 | tee build.log
+          
+          # Check build result
           if [ ${PIPESTATUS[0]} -ne 0 ]; then
-            echo "Build failed. Last 100 lines:"
-            tail -n 100 build.log
+            echo "=== BUILD FAILED ==="
+            echo "Last 50 lines of log:"
+            tail -n 50 build.log
+            echo "Checking for APK files:"
+            ls -la bin/ || true
             exit 1
           fi
 
@@ -113,7 +111,7 @@ jobs:
           path: bin/*.apk
 
       - name: Upload build log
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
