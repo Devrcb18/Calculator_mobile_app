@@ -42,8 +42,8 @@ jobs:
       - name: Install Buildozer and dependencies
         run: |
           python -m pip install --upgrade pip virtualenv
-          pip install --user cython==0.29.36 buildozer==1.5.0
-          pip install --user python-for-android
+          pip install --user cython==0.29.33 buildozer==1.5.0
+          pip install --user python-for-android==2024.06.17
 
       - name: Clean up conflicting Android installations
         run: |
@@ -103,19 +103,29 @@ jobs:
           sed -i "s|^#android.sdk_path = .*|android.sdk_path = $HOME/android-sdk|" buildozer.spec
           sed -i "s|^#android.sdk_manager_path = .*|android.sdk_manager_path = $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager|" buildozer.spec
           sed -i "s|^#p4a.branch = .*|p4a.branch = develop|" buildozer.spec
-          sed -i "s|^#requirements = .*|requirements = python3,kivy,pillow|" buildozer.spec
+          sed -i "s|^#requirements = .*|requirements = python3,kivy|" buildozer.spec
           sed -i "s|^#android.api = .*|android.api = 33|" buildozer.spec
           sed -i "s|^#android.minapi = .*|android.minapi = 21|" buildozer.spec
           sed -i "s|^#android.ndk_version = .*|android.ndk_version = 25.2.9519653|" buildozer.spec
           sed -i "s|^#android.skip_update = .*|android.skip_update = True|" buildozer.spec
           sed -i "s|^#log_level = .*|log_level = 2|" buildozer.spec
+          sed -i "s|^#android.gradle_dependencies = .*|android.gradle_dependencies = |" buildozer.spec
+          sed -i "s|^#p4a.local_recipes = .*|p4a.local_recipes = |" buildozer.spec
 
       - name: Build APK
         run: |
           # Clean previous builds
           buildozer android clean || true
           
-          # Build with verbose output
+          # Remove problematic cached files
+          rm -rf ~/.buildozer/android/packages/openssl* || true
+          
+          # Build with verbose output and better error handling
+          export GRADLE_OPTS="-Xmx2048m -Dorg.gradle.daemon=false"
+          export ANDROID_NDK_HOME=$HOME/android-sdk/ndk/25.2.9519653
+          export ANDROID_SDK_ROOT=$HOME/android-sdk
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          
           buildozer -v android debug 2>&1 | tee build.log
           
           # Check build result
