@@ -71,11 +71,16 @@ jobs:
           buildozer android debug || true
         shell: bash
 
+      # Export ANDROID_HOME to Buildozer's SDK path
+      - name: Set ANDROID_HOME environment variable
+        run: |
+          echo "ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
+
       # Find sdkmanager path dynamically
       - name: Find sdkmanager path
         id: find_sdkmanager
         run: |
-          SDKMANAGER_PATH=$(find $HOME/.buildozer/android/platform/android-sdk/ -type f -name sdkmanager | head -n 1)
+          SDKMANAGER_PATH=$(find $ANDROID_HOME -type f -name sdkmanager | head -n 1)
           if [ -z "$SDKMANAGER_PATH" ]; then
             echo "sdkmanager not found!"
             exit 1
@@ -93,15 +98,15 @@ jobs:
           set -e
         shell: bash
 
-      # Install Android SDK platform-tools, platforms, and build-tools 36
+      # Install Android SDK platform-tools, platforms, and build-tools
       - name: Install Android SDK platform-tools, platforms, and build-tools
         run: |
           set +e
           for i in {1..5}; do
-            "$SDKMANAGER_PATH" --verbose \
+            "$SDKMANAGER_PATH" --sdk_root="$ANDROID_HOME" --verbose \
               "platform-tools" \
-              "platforms;android-36" \
-              "build-tools;36.0.0" && break || sleep 5
+              "platforms;android-33" \
+              "build-tools;33.0.0" && break || sleep 5
           done
           set -e
         shell: bash
@@ -109,7 +114,7 @@ jobs:
       # Verify build-tools installation
       - name: Verify build-tools installation
         run: |
-          ls -la $HOME/.buildozer/android/platform/android-sdk/build-tools
+          ls -la $ANDROID_HOME/build-tools
         shell: bash
 
       # Clean previous builds to avoid stale SDK references
