@@ -44,14 +44,20 @@ jobs:
             cmake \
             libffi-dev \
             libssl-dev
-        shell: bash
+
+      - name: Add swap space to prevent OOM
+        run: |
+          sudo fallocate -l 4G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          sudo swapon --show
 
       - name: Prepare virtual environment
         run: |
           python3 -m venv venv
           source venv/bin/activate
           echo "Using Python==$(python --version)"
-        shell: bash
 
       - name: Install Python dependencies
         run: |
@@ -60,7 +66,6 @@ jobs:
           python3 -m pip install --upgrade \
             Cython==0.29.33 \
             buildozer
-        shell: bash
 
       - name: Install requirements.txt if exists
         run: |
@@ -68,7 +73,6 @@ jobs:
           if [ -f requirements.txt ]; then
             python3 -m pip install -r requirements.txt
           fi
-        shell: bash
 
       - name: Export ANDROID_HOME and related environment variables
         run: |
@@ -83,7 +87,6 @@ jobs:
         run: |
           source venv/bin/activate
           buildozer android debug || true
-        shell: bash
 
       # Find sdkmanager path dynamically
       - name: Find sdkmanager path
@@ -97,7 +100,7 @@ jobs:
           echo "SDKMANAGER_PATH=$SDKMANAGER_PATH" >> $GITHUB_ENV
           echo "Found sdkmanager at $SDKMANAGER_PATH"
 
-      # Accept Android SDK licenses (robustly, avoid broken pipe)
+      # Accept Android SDK licenses robustly
       - name: Accept Android SDK licenses
         run: |
           set +e
@@ -105,7 +108,6 @@ jobs:
             (yes || true) | "$SDKMANAGER_PATH" --licenses --sdk_root="$ANDROID_HOME" --verbose && break || sleep 5
           done
           set -e
-        shell: bash
 
       # Install Android SDK tools for API 31 and build-tools 30.0.3
       - name: Install Android SDK platform-tools, platforms, and build-tools
@@ -118,27 +120,28 @@ jobs:
               "build-tools;30.0.3" && break || sleep 5
           done
           set -e
-        shell: bash
 
       # Verify build-tools installation
       - name: Verify build-tools installation
         run: |
           ls -la $ANDROID_HOME/build-tools
-        shell: bash
 
       # Clean previous builds to avoid stale SDK references
       - name: Clean Buildozer previous builds
         run: |
           source venv/bin/activate
           buildozer android clean
-        shell: bash
 
-      # Build APK
-      - name: Build with Buildozer
+      # Build APK with log tailing for debugging
+      - name: Build with Buildozer (log to file)
         run: |
           source venv/bin/activate
-          buildozer android debug
-        shell: bash
+          # Uncomment the line below if you need p4a develop branch for recipe compatibility
+          # buildozer android debug p4a.branch=develop | tee buildozer_build.log
+          buildozer android debug | tee buildozer_build.log
+
+      - name: Show last 200 lines of build log
+        run: tail -n 200 buildozer_build.log
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
