@@ -93,14 +93,30 @@ jobs:
           set -e
         shell: bash
 
-      # Install Android Build Tools 36 (with retries)
-      - name: Install Android Build Tools 36
+      # Install Android SDK platform-tools, platforms, and build-tools 36
+      - name: Install Android SDK platform-tools, platforms, and build-tools
         run: |
           set +e
           for i in {1..5}; do
-            "$SDKMANAGER_PATH" --verbose "build-tools;36.0.0" && break || sleep 5
+            "$SDKMANAGER_PATH" --verbose \
+              "platform-tools" \
+              "platforms;android-36" \
+              "build-tools;36.0.0" && break || sleep 5
           done
           set -e
+        shell: bash
+
+      # Verify build-tools installation
+      - name: Verify build-tools installation
+        run: |
+          ls -la $HOME/.buildozer/android/platform/android-sdk/build-tools
+        shell: bash
+
+      # Clean previous builds to avoid stale SDK references
+      - name: Clean Buildozer previous builds
+        run: |
+          source venv/bin/activate
+          buildozer android clean
         shell: bash
 
       # Build your APK
