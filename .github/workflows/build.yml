@@ -84,7 +84,7 @@ jobs:
           ln -sfn ~/android-sdk ~/.buildozer/android/platform/android-sdk
           
           if [ ! -f buildozer.spec ]; then
-            cat > buildozer.spec <<'EOL'
+            cat > buildozer.spec << 'EOL'
 [app]
 title = My Kivy App
 package.name = myapp
@@ -106,14 +106,14 @@ p4a.bootstrap = sdl2
 EOL
           fi
 
-          sed -i "s|^#\?android.accept_sdk_license = .*|android.accept_sdk_license = True|" buildozer.spec
-          sed -i "s|^#\?android.ndk_path = .*|android.ndk_path = $HOME/android-sdk/ndk/25.2.9519653|" buildozer.spec
-          sed -i "s|^#\?android.sdk_path = .*|android.sdk_path = $HOME/android-sdk|" buildozer.spec
-          sed -i "s|^#\?requirements = .*|requirements = python3,kivy==2.2.1|" buildozer.spec
-          sed -i "s|^#\?android.api = .*|android.api = 33|" buildozer.spec
-          sed -i "s|^#\?android.minapi = .*|android.minapi = 21|" buildozer.spec
-          sed -i "s|^#\?android.ndk_version = .*|android.ndk_version = 25.2.9519653|" buildozer.spec
-          sed -i "s|^#\?log_level = .*|log_level = 2|" buildozer.spec
+          sed -i "s|^#\?android.accept_sdk_license = .*|android.accept_sdk_license = True|" buildozer.spec || true
+          sed -i "s|^#\?android.ndk_path = .*|android.ndk_path = $HOME/android-sdk/ndk/25.2.9519653|" buildozer.spec || true
+          sed -i "s|^#\?android.sdk_path = .*|android.sdk_path = $HOME/android-sdk|" buildozer.spec || true
+          sed -i "s|^#\?requirements = .*|requirements = python3,kivy==2.2.1|" buildozer.spec || true
+          sed -i "s|^#\?android.api = .*|android.api = 33|" buildozer.spec || true
+          sed -i "s|^#\?android.minapi = .*|android.minapi = 21|" buildozer.spec || true
+          sed -i "s|^#\?android.ndk_version = .*|android.ndk_version = 25.2.9519653|" buildozer.spec || true
+          sed -i "s|^#\?log_level = .*|log_level = 2|" buildozer.spec || true
 
       - name: Build APK
         run: |
