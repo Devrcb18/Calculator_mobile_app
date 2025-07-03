@@ -71,6 +71,18 @@ jobs:
           buildozer android debug || true
         shell: bash
 
+      # Unzip any zip files in the SDK directory (fixes incomplete SDK extraction)
+      - name: Unzip SDK zips if present
+        run: |
+          SDK_DIR="$HOME/.buildozer/android/platform/android-sdk"
+          if ls $SDK_DIR/*.zip 1> /dev/null 2>&1; then
+            for f in $SDK_DIR/*.zip; do
+              echo "Unzipping $f"
+              unzip -o "$f" -d "$SDK_DIR"
+            done
+          fi
+        shell: bash
+
       # Find sdkmanager path dynamically
       - name: Find sdkmanager path
         id: find_sdkmanager
