@@ -1,4 +1,4 @@
-name: CI
+name: Kivy APK Builder
 on:
   push:
     branches: [main]
@@ -8,12 +8,25 @@ jobs:
     runs-on: ubuntu-20.04
 
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v2
 
-      - name: Get Date
-        id: get-date
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'
+
+      - name: Install Buildozer dependencies
         run: |
-          echo "date=$(date -u '+%Y%m%d')" >> $GITHUB_OUTPUT
+          sudo apt-get update
+          sudo apt-get install -y python3-pip git zip unzip openjdk-8-jdk
+
+      - name: Install Buildozer
+        run: pip install buildozer
+
+      - name: Get build date
+        id: get-date
+        run: echo "::set-output name=date::$(date -u '+%Y%m%d')"
         shell: bash
 
       - name: Cache Buildozer global directory
@@ -28,15 +41,14 @@ jobs:
           path: .buildozer
           key: ${{ runner.os }}-${{ steps.get-date.outputs.date }}-${{ hashFiles('buildozer.spec') }}
 
-      - name: Build with Buildozer
+      - name: Build APK
         uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
         with:
           command: buildozer android debug
           buildozer_version: stable
 
-      - name: Upload artifacts
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v2
         with:
-          name: package
-          path: ${{ steps.buildozer.outputs.filename }}
+          name: kivy-app
+          path: bin/*.apk
