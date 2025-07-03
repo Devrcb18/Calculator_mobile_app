@@ -11,7 +11,6 @@ inputs:
     default: 'buildozer android debug'
     description: 'Buildozer command to use'
 
-# Add the branding section
 branding:
   color: 'green'
   icon: 'play'
@@ -19,7 +18,10 @@ branding:
 runs:
   using: "composite"
   steps:
-    - name: Setup python
+    - name: Checkout source code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
       uses: actions/setup-python@v5
       with:
         architecture: x64
@@ -28,13 +30,8 @@ runs:
     - name: Setup Java 17 required by Gradle
       uses: actions/setup-java@v4
       with:
-        distribution: 'temurin'  # or 'zulu','liberica', etc.
+        distribution: 'temurin'
         java-version: '17'
-
-    - name: Set JAVA_HOME
-      run: |
-        echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
-      shell: bash
 
     - name: Prepare virtual environment
       run: |
@@ -42,7 +39,7 @@ runs:
         source venv/bin/activate
         echo "Using Python==$(python --version)"
       shell: bash
-      
+
     - name: Install and upgrade dependencies
       run: |
         sudo apt update
@@ -55,9 +52,9 @@ runs:
           libtool \
           pkg-config \
           zlib1g-dev \
-          libncurses5-dev \
-          libncursesw5-dev \
-          libtinfo5 \
+          libncurses6 \
+          libncursesw6 \
+          libtinfo6 \
           cmake \
           libffi-dev \
           libssl-dev
@@ -78,3 +75,9 @@ runs:
       run: |
         ${{ inputs.buildozer-cmd }}
       shell: bash
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: apk
+        path: ./bin/*.apk
