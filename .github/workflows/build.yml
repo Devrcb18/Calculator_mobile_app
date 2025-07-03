@@ -78,6 +78,13 @@ jobs:
             buildozer init
           fi
 
+      - name: Pre-download python-for-android to avoid missing folder errors
+        run: |
+          mkdir -p .buildozer/android/platform
+          git clone https://github.com/kivy/python-for-android.git .buildozer/android/platform/python-for-android
+          cd .buildozer/android/platform/python-for-android
+          git checkout master
+
       - name: Update buildozer.spec configuration
         run: |
           sed -i "s|^#* *requirements =.*|requirements = python3,kivy==2.2.1,kivymd|" buildozer.spec
