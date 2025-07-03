@@ -106,7 +106,6 @@ p4a.bootstrap = sdl2
 EOL
           fi
 
-          # Update existing spec if present
           sed -i "s|^#\?android.accept_sdk_license = .*|android.accept_sdk_license = True|" buildozer.spec
           sed -i "s|^#\?android.ndk_path = .*|android.ndk_path = $HOME/android-sdk/ndk/25.2.9519653|" buildozer.spec
           sed -i "s|^#\?android.sdk_path = .*|android.sdk_path = $HOME/android-sdk|" buildozer.spec
@@ -118,22 +117,18 @@ EOL
 
       - name: Build APK
         run: |
-          # Clean previous builds
           buildozer android clean || true
           rm -rf .buildozer/android/platform/build-* || true
           
-          # Set environment variables
           export GRADLE_OPTS="-Xmx2048m -Dorg.gradle.daemon=false"
           export ANDROID_NDK_HOME=$HOME/android-sdk/ndk/25.2.9519653
           export ANDROID_SDK_ROOT=$HOME/android-sdk
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
           
-          # First build attempt
           if ! buildozer -v android debug > build.log 2>&1; then
             echo "=== First build failed ==="
             echo "Trying alternative architecture..."
             
-            # Try armeabi-v7a architecture
             sed -i "s|android.arch = arm64-v8a|android.arch = armeabi-v7a|" buildozer.spec
             buildozer android clean || true
             rm -rf .buildozer/android/platform/build-* || true
