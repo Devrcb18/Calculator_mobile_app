@@ -2,11 +2,9 @@ name: Build Android APK
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   build:
@@ -28,12 +26,13 @@ jobs:
           build-essential git zip unzip openjdk-17-jdk
 
         pip install --upgrade pip
-        pip install buildozer cython
+        pip install --upgrade Cython
+        pip install --upgrade buildozer
 
-    - name: Install Android SDK & NDK requirements
+    - name: Initialize Buildozer
       run: |
+        buildozer init || echo "buildozer.spec already exists"
         buildozer android clean
-        buildozer android update
 
     - name: Build APK
       run: |
