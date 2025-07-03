@@ -20,7 +20,7 @@ jobs:
     - name: Install dependencies (system + pip)
       run: |
         sudo apt update
-        sudo apt install -y python3-pip build-essential openjdk-17-jdk unzip git
+        sudo apt install -y python3-pip build-essential autoconf automake libtool pkg-config zlib1g-dev libncurses5 libncurses5-dev libncursesw5 libncursesw5-dev libssl-dev openjdk-17-jdk unzip git
         pip install --upgrade pip
         pip install buildozer cython
 
@@ -44,7 +44,7 @@ jobs:
         path: .buildozer
         key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
 
-    - name: Initialize Buildozer Android platform (clean)
+    - name: Initialize Buildozer Android platform
       run: buildozer android clean
 
     - name: Build APK
@@ -53,5 +53,4 @@ jobs:
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
-        name: kivy-apk
-        path: bin/*.apk
+        name: kivy-a
