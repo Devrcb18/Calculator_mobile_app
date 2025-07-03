@@ -5,52 +5,47 @@ on:
     branches: [ main ]
 
 jobs:
-  build-apk:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
+    - name: Checkout repo
       uses: actions/checkout@v4
 
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: "3.10"
 
-    - name: Install dependencies (system + pip)
+    - name: Install system dependencies
       run: |
         sudo apt update
-        sudo apt install -y python3-pip build-essential autoconf automake libtool pkg-config zlib1g-dev libncurses5 libncurses5-dev libncursesw5 libncursesw5-dev libssl-dev openjdk-17-jdk unzip git
-        pip install --upgrade pip
-        pip install buildozer cython
+        sudo apt install -y python3-pip build-essential autoconf automake libtool pkg-config zlib1g-dev libssl-dev libncurses-dev openjdk-17-jdk unzip git
 
-    - name: Set environment variables for Android
+    - name: Upgrade pip and install buildozer
       run: |
-        echo "ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
-        echo "ANDROID_SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk" >> $GITHUB_ENV
-        echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
-        echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
-        echo "$ANDROID_HOME/emulator" >> $GITHUB_PATH
+        pip install --upgrade pip
+        pip install cython
+        pip install buildozer
 
-    - name: Cache Buildozer global directory
-      uses: actions/cache@v4
-      with:
-        path: .buildozer_global
-        key: buildozer-global-${{ hashFiles('buildozer.spec') }}
+    - name: Initialize buildozer if not exists
+      run: |
+        if [ ! -f buildozer.spec ]; then
+          buildozer init
+        fi
 
-    - name: Cache .buildozer folder
+    - name: Cache .buildozer directory
       uses: actions/cache@v4
       with:
         path: .buildozer
-        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
-
-    - name: Initialize Buildozer Android platform
-      run: buildozer android clean
+        key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
 
     - name: Build APK
-      run: buildozer android debug
+      run: |
+        buildozer android debug
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
-        name: kivy-a
+        name: kivy-apk
+        path: bin/*.apk
